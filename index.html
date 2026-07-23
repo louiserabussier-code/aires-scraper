@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>Aires — Trouvez votre prochaine pause</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green: #1D9E75; --green-light: #E1F5EE; --green-mid: #5DCAA5; --green-dark: #085041;
+      --blue: #378ADD; --red-light: #F7C1C1; --red-dark: #791F1F; --red-mid: #F09595;
+      --amber: #FAC775; --gray-50: #F7F6F3; --gray-100: #EDEDEA; --gray-300: #B4B2A9;
+      --gray-500: #5F5E5A; --gray-700: #2C2C2A; --white: #ffffff;
+      --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-full: 999px;
+    }
+    html, body { font-family: 'Inter', sans-serif; background: var(--gray-50); color: var(--gray-700); height: 100%; overflow: hidden; }
+    #app { display: flex; flex-direction: column; height: 100dvh; }
+
+    /* Header */
+    #header { background: var(--white); border-bottom: 1px solid var(--gray-100); padding: 12px 16px 10px; flex-shrink: 0; }
+    #header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    #logo { font-size: 18px; font-weight: 600; color: var(--green-dark); letter-spacing: -0.3px; }
+    #logo span { color: var(--green); }
+    #beta-badge { font-size: 10px; padding: 2px 8px; border-radius: var(--r-full); background: var(--green-light); color: var(--green-dark); font-weight: 500; }
+    #mode-tabs { display: flex; gap: 6px; }
+    .mode-tab { flex: 1; padding: 8px 10px; border-radius: var(--r-sm); border: 1px solid var(--gray-100); background: var(--gray-50); color: var(--gray-500); font-size: 13px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; }
+    .mode-tab.active { background: var(--green); color: var(--white); border-color: var(--green); }
+
+    /* Trajet bar */
+    #trajet-bar { background: var(--white); border-bottom: 1px solid var(--gray-100); padding: 10px 16px; flex-shrink: 0; display: none; }
+    #trajet-bar.visible { display: block; }
+    .traj-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .traj-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+    .traj-input { flex: 1; font-size: 14px; padding: 8px 12px; border-radius: var(--r-sm); border: 1px solid var(--gray-100); background: var(--gray-50); color: var(--gray-700); outline: none; font-family: 'Inter', sans-serif; }
+    .traj-input:focus { border-color: var(--green); background: var(--white); }
+    #btn-go { width: 100%; margin-top: 8px; padding: 10px; border-radius: var(--r-sm); background: var(--green); color: var(--white); border: none; font-size: 14px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; }
+
+    /* Filters */
+    #filters-bar { background: var(--white); border-bottom: 1px solid var(--gray-100); padding: 8px 16px; display: flex; gap: 6px; overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
+    #filters-bar::-webkit-scrollbar { display: none; }
+    .fchip { flex-shrink: 0; font-size: 12px; padding: 5px 12px; border-radius: var(--r-full); border: 1px solid var(--gray-100); background: var(--white); color: var(--gray-500); cursor: pointer; white-space: nowrap; font-family: 'Inter', sans-serif; }
+    .fchip.active { background: var(--green); color: var(--white); border-color: var(--green); }
+
+    /* Map */
+    #map-wrap { flex: 1; position: relative; min-height: 0; }
+    #map { width: 100%; height: 100%; }
+    #btn-geoloc { position: absolute; bottom: 16px; right: 16px; z-index: 400; width: 44px; height: 44px; border-radius: 50%; background: var(--white); border: 1px solid var(--gray-100); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,.12); font-size: 20px; }
+    #btn-geoloc.active { border-color: var(--green); }
+    #status-bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 400; background: var(--white); border: 1px solid var(--gray-100); border-radius: var(--r-full); padding: 5px 14px; font-size: 12px; color: var(--gray-500); white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+
+    /* Nearby drawer */
+    #nearby-drawer { background: var(--white); border-top: 1px solid var(--gray-100); flex-shrink: 0; max-height: 190px; overflow-y: auto; display: none; transition: max-height 0.2s ease; }
+    #nearby-drawer.visible { display: block; }
+    #nearby-drawer.collapsed { max-height: 40px; overflow: hidden; }
+    #nearby-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px 6px; cursor: pointer; position: sticky; top: 0; background: var(--white); }
+    #nearby-title { font-size: 12px; font-weight: 500; color: var(--gray-500); }
+    #btn-drawer-toggle { border: none; background: none; color: var(--gray-500); font-size: 13px; cursor: pointer; padding: 4px 8px; font-family: 'Inter', sans-serif; transition: transform 0.2s ease; }
+    #nearby-drawer.collapsed #btn-drawer-toggle { transform: rotate(-90deg); }
+    .nitem { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--gray-100); cursor: pointer; }
+    .nitem:last-child { border-bottom: none; }
+    .nitem:active { background: var(--gray-50); }
+    .nname { font-size: 14px; font-weight: 500; }
+    .nmeta { font-size: 12px; color: var(--gray-500); margin-top: 2px; }
+    .ndist { font-size: 14px; font-weight: 600; color: var(--green); flex-shrink: 0; margin-left: 12px; }
+
+    /* OSM btn */
+    #osm-wrap { padding: 8px 16px; background: var(--white); border-top: 1px solid var(--gray-100); flex-shrink: 0; }
+    #btn-osm { width: 100%; padding: 9px; border-radius: var(--r-sm); font-size: 13px; border: 1px solid var(--gray-100); background: var(--gray-50); color: var(--gray-500); cursor: pointer; font-family: 'Inter', sans-serif; }
+    #btn-osm.loaded { color: var(--green); border-color: var(--green-mid); background: var(--green-light); }
+
+    /* Detail panel */
+    #detail-panel { position: fixed; bottom: 0; left: 0; right: 0; z-index: 500; background: var(--white); border-radius: var(--r-lg) var(--r-lg) 0 0; border-top: 1px solid var(--gray-100); padding-bottom: env(safe-area-inset-bottom, 16px); transform: translateY(100%); transition: transform 0.28s cubic-bezier(.4,0,.2,1); max-height: 80vh; overflow-y: auto; }
+    #detail-panel.open { transform: translateY(0); }
+    .phandle { width: 36px; height: 4px; border-radius: 2px; background: var(--gray-100); margin: 10px auto 14px; }
+    .pbody { padding: 0 16px 20px; }
+    .pname { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+    .pmeta { font-size: 13px; color: var(--gray-500); margin-bottom: 10px; }
+    .pstars { display: flex; gap: 2px; align-items: center; margin-bottom: 10px; }
+    .pstar { font-size: 15px; color: var(--amber); }
+    .pstar.e { color: var(--gray-100); }
+    .pequip { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+    .etag { font-size: 12px; padding: 4px 10px; border-radius: var(--r-full); }
+    .etag.ok { background: var(--green-light); color: var(--green-dark); }
+    .etag.nok { background: var(--red-light); color: var(--red-dark); }
+    .etag.unk { background: var(--gray-50); color: var(--gray-500); border: 1px dashed var(--gray-300); }
+    .pleg { display: flex; gap: 12px; margin-bottom: 14px; }
+    .pleg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--gray-500); }
+    .pleg-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .pactions { display: flex; gap: 8px; }
+    .pbtn { flex: 1; padding: 11px; border-radius: var(--r-sm); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--gray-100); background: var(--gray-50); color: var(--gray-700); font-family: 'Inter', sans-serif; }
+    .pbtn.primary { background: var(--green); color: var(--white); border-color: var(--green); }
+
+    /* Contrib sheet */
+    #contrib-sheet { position: fixed; bottom: 0; left: 0; right: 0; z-index: 600; background: var(--white); border-radius: var(--r-lg) var(--r-lg) 0 0; border-top: 1px solid var(--gray-100); padding-bottom: env(safe-area-inset-bottom, 16px); transform: translateY(100%); transition: transform 0.28s cubic-bezier(.4,0,.2,1); max-height: 90vh; overflow-y: auto; }
+    #contrib-sheet.open { transform: translateY(0); }
+    .shead { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 12px; border-bottom: 1px solid var(--gray-100); }
+    .stitle { font-size: 15px; font-weight: 600; }
+    .sclose { font-size: 24px; color: var(--gray-300); cursor: pointer; line-height: 1; padding: 0 4px; }
+    .sbody { padding: 16px; }
+    .swrap { display: none; }
+    .swrap.open { display: block; }
+    .slabel { font-size: 11px; font-weight: 500; color: var(--gray-500); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px; }
+    .cgrid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+    .cchip { font-size: 13px; padding: 7px 14px; border-radius: var(--r-full); border: 1px solid var(--gray-100); background: var(--white); color: var(--gray-500); cursor: pointer; font-family: 'Inter', sans-serif; }
+    .cchip.conf { background: var(--green); color: var(--white); border-color: var(--green); }
+    .cchip.brok { background: var(--red-light); color: var(--red-dark); border-color: var(--red-mid); }
+    .cchip.add { border-style: dashed; }
+    .chint { font-size: 11px; color: var(--gray-300); margin: 6px 0 14px; }
+    .cstars { display: flex; gap: 8px; margin-bottom: 16px; }
+    .csstar { font-size: 30px; color: var(--gray-100); cursor: pointer; }
+    .csstar.on { color: var(--amber); }
+    .cphoto { font-size: 13px; color: var(--gray-500); margin-bottom: 10px; }
+    .cslots { display: flex; gap: 8px; }
+    .cslot { width: 72px; height: 72px; border-radius: var(--r-sm); border: 1.5px dashed var(--gray-300); display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--gray-50); font-size: 22px; }
+    .cslot.filled { background: var(--green-light); border-color: var(--green-mid); border-style: solid; }
+    .cdone { text-align: center; padding: 24px 16px; }
+    .cdone-icon { font-size: 48px; margin-bottom: 10px; }
+    .cdone-title { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .cdone-sub { font-size: 14px; color: var(--gray-500); }
+    .snav { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--gray-100); }
+    .snav-btn { padding: 10px 20px; border-radius: var(--r-sm); font-size: 14px; font-weight: 500; cursor: pointer; border: 1px solid var(--gray-100); background: var(--gray-50); color: var(--gray-700); font-family: 'Inter', sans-serif; }
+    .snav-btn.primary { background: var(--green); color: var(--white); border-color: var(--green); }
+    .sdots { display: flex; gap: 5px; }
+    .sdot { width: 6px; height: 6px; border-radius: 50%; background: var(--gray-100); }
+    .sdot.on { background: var(--green); }
+
+    /* Backdrop */
+    #backdrop { display: none; position: fixed; inset: 0; z-index: 490; background: rgba(0,0,0,0.3); }
+    #backdrop.open { display: block; }
+
+    @keyframes pulse { 0%{opacity:.7;transform:scale(1)} 100%{opacity:0;transform:scale(2.8)} }
+    .pulse { animation: pulse 1.8s ease-out infinite; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="header-top">
+      <div id="logo">aires<span>.</span></div>
+      <div id="beta-badge">bêta</div>
+    </div>
+    <div id="mode-tabs">
+      <button class="mode-tab active" id="tab-geo" onclick="switchMode('geo')">📍 Me localiser</button>
+      <button class="mode-tab" id="tab-trajet" onclick="switchMode('trajet')">🗺 Trajet A → B</button>
+    </div>
+  </div>
+
+  <div id="trajet-bar">
+    <div class="traj-row">
+      <div class="traj-dot" style="background:var(--blue)"></div>
+      <input class="traj-input" id="inp-dep" type="text" placeholder="Départ — ex: Paris" value="Paris"/>
+    </div>
+    <div class="traj-row">
+      <div class="traj-dot" style="background:var(--green)"></div>
+      <input class="traj-input" id="inp-arr" type="text" placeholder="Arrivée — ex: Lyon" value="Lyon"/>
+    </div>
+    <button id="btn-go" onclick="doTrajet()">Voir les aires sur ce trajet</button>
+  </div>
+
+  <div id="filters-bar">
+    <button class="fchip active" data-f="all" onclick="setFilter(this)">Toutes</button>
+    <button class="fchip" data-f="enfants" onclick="setFilter(this)">🧒 Enfants</button>
+    <button class="fchip" data-f="animaux" onclick="setFilter(this)">🐾 Animaux</button>
+    <button class="fchip" data-f="pmr" onclick="setFilter(this)">♿ PMR</button>
+    <button class="fchip" data-f="douches" onclick="setFilter(this)">🚿 Douches</button>
+    <button class="fchip" data-f="restaurant" onclick="setFilter(this)">🍽 Resto</button>
+  </div>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="status-bar">Chargement des aires réelles…</div>
+    <button id="btn-geoloc" onclick="geolocate()">📍</button>
+  </div>
+
+  <div id="nearby-drawer">
+    <div id="nearby-header">
+      <div id="nearby-title">Aires proches</div>
+      <button id="btn-drawer-toggle">▾</button>
+    </div>
+    <div id="nearby-items"></div>
+  </div>
+
+  <div id="osm-wrap">
+    <button id="btn-osm" onclick="loadOSM()">↻ Rafraîchir depuis OpenStreetMap (optionnel)</button>
+  </div>
+</div>
+
+<!-- Backdrop indépendant -->
+<div id="backdrop" onclick="closeBackdrop()"></div>
+
+<!-- Detail panel -->
+<div id="detail-panel">
+  <div class="phandle"></div>
+  <div class="pbody">
+    <div class="pname" id="p-name"></div>
+    <div class="pmeta" id="p-meta"></div>
+    <div class="pstars" id="p-stars"></div>
+    <div class="pleg">
+      <div class="pleg-item"><div class="pleg-dot" style="background:var(--green)"></div>Confirmé</div>
+      <div class="pleg-item"><div class="pleg-dot" style="background:var(--red-mid)"></div>Hors service</div>
+      <div class="pleg-item"><div class="pleg-dot" style="background:var(--gray-300)"></div>Non vérifié</div>
+    </div>
+    <div class="pequip" id="p-equip"></div>
+    <div class="pactions">
+      <button class="pbtn" id="btn-maps">📍 Ouvrir dans Maps</button>
+      <button class="pbtn primary" id="btn-contrib">✏️ Compléter</button>
+    </div>
+  </div>
+</div>
+
+<!-- Contrib sheet -->
+<div id="contrib-sheet">
+  <div class="shead">
+    <div class="stitle" id="c-title">Compléter l'aire</div>
+    <div class="sclose" id="c-close">×</div>
+  </div>
+  <div class="sbody">
+    <div class="swrap open" id="cs1">
+      <div class="slabel">Étape 1 / 4 — Équipements</div>
+      <div class="cgrid" id="c-chips"></div>
+      <div class="chint">Tap = confirmé · 2 taps = hors service · 3 taps = non vérifié</div>
+      <div class="snav">
+        <button class="snav-btn" id="cs1-cancel">Annuler</button>
+        <div class="sdots"><div class="sdot on"></div><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div></div>
+        <button class="snav-btn primary" id="cs1-next">Suivant</button>
+      </div>
+    </div>
+    <div class="swrap" id="cs2">
+      <div class="slabel">Étape 2 / 4 — Ajouter un équipement</div>
+      <div class="cgrid" id="c-addchips"></div>
+      <div class="chint">Tap pour ajouter un équipement manquant</div>
+      <div class="snav">
+        <button class="snav-btn" id="cs2-back">Retour</button>
+        <div class="sdots"><div class="sdot"></div><div class="sdot on"></div><div class="sdot"></div><div class="sdot"></div></div>
+        <button class="snav-btn primary" id="cs2-next">Suivant</button>
+      </div>
+    </div>
+    <div class="swrap" id="cs3">
+      <div class="slabel">Étape 3 / 4 — Note</div>
+      <div class="cstars" id="c-stars">
+        <span class="csstar" data-v="1">★</span>
+        <span class="csstar" data-v="2">★</span>
+        <span class="csstar" data-v="3">★</span>
+        <span class="csstar" data-v="4">★</span>
+        <span class="csstar" data-v="5">★</span>
+      </div>
+      <div class="cphoto">Photo (optionnel)</div>
+      <div class="cslots">
+        <div class="cslot" id="cph1">📷</div>
+        <div class="cslot" id="cph2">＋</div>
+      </div>
+      <div class="snav">
+        <button class="snav-btn" id="cs3-back">Retour</button>
+        <div class="sdots"><div class="sdot"></div><div class="sdot"></div><div class="sdot on"></div><div class="sdot"></div></div>
+        <button class="snav-btn primary" id="cs3-send">Envoyer</button>
+      </div>
+    </div>
+    <div class="swrap" id="cs4">
+      <div class="cdone">
+        <div class="cdone-icon">✅</div>
+        <div class="cdone-title">Merci !</div>
+        <div class="cdone-sub">Les voyageurs qui passent après vous vont en profiter.</div>
+      </div>
+      <div class="sdots" style="justify-content:center;display:flex;padding:8px 0 16px">
+        <div class="sdot"></div><div class="sdot"></div><div class="sdot"></div><div class="sdot on"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// ── Données ──
+const EQUIP_LABELS = {
+  restaurant:'Restauration', animaux:'Espace chiens', enfants:'Jeux enfants',
+  pmr:'PMR', douches:'Douches', wifi:'Wifi', bornes:'Bornes élec.',
+  microondes:'Micro-ondes', bebe:'Change bébé', eau:'Eau potable'
+};
+const ADD_EQUIP = ['wifi','bornes','microondes','bebe','eau'];
+
+const CITIES = {
+  'paris':[48.856,2.352],'lyon':[45.757,4.832],'marseille':[43.296,5.370],
+  'bordeaux':[44.837,-0.579],'toulouse':[43.604,1.444],'nice':[43.710,7.262],
+  'nantes':[47.218,-1.553],'strasbourg':[48.573,7.752],'montpellier':[43.611,3.876],
+  'dijon':[47.322,5.041],'reims':[49.258,4.031],'metz':[49.119,6.177],
+  'lille':[50.629,3.057],'rennes':[48.117,-1.677],'tours':[47.394,0.684],
+  'orleans':[47.902,1.903],'le mans':[48.007,0.199],'caen':[49.182,-0.370],
+  'rouen':[49.443,1.099],'clermont':[45.777,3.087],'grenoble':[45.188,5.724],
+  'valence':[44.933,4.892],'avignon':[43.949,4.805],'poitiers':[46.580,0.340],
+  'limoges':[45.831,1.257],'bayonne':[43.492,-1.474],'pau':[43.295,-0.370],
+  'brest':[48.390,-4.486],'angers':[47.478,-0.563],'macon':[46.306,4.828],
+  'beaune':[47.026,4.840],'chalon':[46.780,4.853],'auxerre':[47.797,3.571],
+};
+
+
+// ── Jeu de données réel (aires françaises, extrait OpenStreetMap le 16/07/2026) ──
+const STATIC_AIRES = [
+{id:1000,nom:"Aire sans nom",lat:42.70571,lng:-0.31564,km:"Aire de repos",note:null,equip:{}},
+{id:1001,nom:"Aire sans nom",lat:42.7253,lng:-1.76017,km:"Aire de repos",note:null,equip:{}},
+{id:1002,nom:"Aire sans nom",lat:42.75366,lng:-4.29365,km:"Aire de repos",note:null,equip:{}},
+{id:1003,nom:"Túneles de Oña",lat:42.7501,lng:-3.41048,km:"Aire de repos",note:null,equip:{}},
+{id:1004,nom:"Aire sans nom",lat:42.76148,lng:-4.28472,km:"Aire de repos",note:null,equip:{}},
+{id:1005,nom:"Aire sans nom",lat:42.76959,lng:-3.42978,km:"Aire de repos",note:null,equip:{}},
+{id:1006,nom:"Aire sans nom",lat:42.82074,lng:0.71364,km:"Aire de repos",note:null,equip:{}},
+{id:1007,nom:"Aire sans nom",lat:42.83855,lng:2.32595,km:"Aire de repos",note:null,equip:{}},
+{id:1008,nom:"Aire sans nom",lat:42.8517,lng:0.7358,km:"Aire de repos",note:null,equip:{}},
+{id:1009,nom:"Aire sans nom",lat:42.85294,lng:0.73594,km:"Aire de repos",note:null,equip:{}},
+{id:1010,nom:"Aire sans nom",lat:42.85882,lng:-1.57582,km:"Aire de repos",note:null,equip:{}},
+{id:1011,nom:"Aire sans nom",lat:42.87447,lng:0.72671,km:"Aire de repos",note:null,equip:{}},
+{id:1012,nom:"Aire sans nom",lat:42.87934,lng:-2.89341,km:"Aire de repos",note:null,equip:{}},
+{id:1013,nom:"Aire sans nom",lat:42.87804,lng:-2.89454,km:"Aire de repos",note:null,equip:{}},
+{id:1014,nom:"Aire de repos de la Gare d'Urdos",lat:42.88162,lng:-0.56009,km:"Aire de repos",note:null,equip:{}},
+{id:1015,nom:"Aire sans nom",lat:42.87734,lng:2.15195,km:"Aire de repos",note:null,equip:{}},
+{id:1016,nom:"Aire sans nom",lat:42.89469,lng:1.32369,km:"Aire de repos",note:null,equip:{}},
+{id:1017,nom:"Aire sans nom",lat:42.88916,lng:1.63301,km:"Aire de repos",note:null,equip:{}},
+{id:1018,nom:"Aire sans nom",lat:42.88735,lng:1.63304,km:"Aire de repos",note:null,equip:{}},
+{id:1019,nom:"Aire sans nom",lat:42.92203,lng:-2.01459,km:"Aire de services",note:null,equip:{}},
+{id:1020,nom:"Aire sans nom",lat:42.96575,lng:-2.87372,km:"Aire de services",note:null,equip:{}},
+{id:1021,nom:"Aire sans nom",lat:42.96656,lng:-2.86933,km:"Aire de services",note:null,equip:{}},
+{id:1022,nom:"Aire sans nom",lat:42.98889,lng:-3.00943,km:"Aire de repos",note:null,equip:{}},
+{id:1023,nom:"Aire sans nom",lat:43.02587,lng:-3.97329,km:"Aire de repos",note:null,equip:{}},
+{id:1024,nom:"Aire sans nom",lat:43.02773,lng:-1.63524,km:"Aire de repos",note:null,equip:{}},
+{id:1025,nom:"Amurrio",lat:43.04306,lng:-3.00025,km:"Aire de repos",note:null,equip:{}},
+{id:1026,nom:"Aire sans nom",lat:43.03741,lng:-2.91891,km:"Aire de repos",note:null,equip:{}},
+{id:1027,nom:"Aire sans nom",lat:43.03504,lng:-1.94105,km:"Aire de repos",note:null,equip:{}},
+{id:1028,nom:"Aire sans nom",lat:43.03546,lng:-1.62563,km:"Aire de repos",note:null,equip:{}},
+{id:1029,nom:"Aire sans nom",lat:43.05221,lng:-2.92785,km:"Aire de repos",note:null,equip:{}},
+{id:1030,nom:"Aire sans nom",lat:43.08249,lng:0.53887,km:"Aire de repos",note:null,equip:{}},
+{id:1031,nom:"Ariège Pyrénées",lat:43.09333,lng:1.683,km:"Aire de repos",note:null,equip:{}},
+{id:1032,nom:"Aire des Bandouliers",lat:43.09886,lng:0.3564,km:"Aire de repos",note:null,equip:{}},
+{id:1033,nom:"Aire du Lac Saint-Martin",lat:43.09989,lng:0.35549,km:"Aire de repos",note:null,equip:{}},
+{id:1034,nom:"Aire sans nom",lat:43.10949,lng:-3.45914,km:"Aire de repos",note:null,equip:{}},
+{id:1035,nom:"Aire sans nom",lat:43.11373,lng:-0.74117,km:"Aire de repos",note:null,equip:{}},
+{id:1036,nom:"Aire sans nom",lat:43.12423,lng:-1.96665,km:"Aire de repos",note:null,equip:{}},
+{id:1037,nom:"Aire sans nom",lat:43.126,lng:-2.54547,km:"Aire de repos",note:null,equip:{}},
+{id:1038,nom:"Aire sans nom",lat:43.13041,lng:3.05506,km:"Aire de repos",note:null,equip:{}},
+{id:1039,nom:"Aire sans nom",lat:43.12789,lng:3.09743,km:"Aire de repos",note:null,equip:{}},
+{id:1040,nom:"Aire sans nom",lat:43.15205,lng:-2.93736,km:"Aire de repos",note:null,equip:{}},
+{id:1041,nom:"Aire sans nom",lat:43.15404,lng:-2.9367,km:"Aire de repos",note:null,equip:{}},
+{id:1042,nom:"Aire de la Garde",lat:43.15171,lng:6.03793,km:"Aire de services",note:null,equip:{}},
+{id:1043,nom:"Aire sans nom",lat:43.16067,lng:-4.24865,km:"Aire de repos",note:null,equip:{}},
+{id:1044,nom:"Aire de Baretous",lat:43.16319,lng:-0.68282,km:"Aire de repos",note:null,equip:{}},
+{id:1045,nom:"Aire sans nom",lat:43.15983,lng:2.29371,km:"Aire de repos",note:null,equip:{}},
+{id:1046,nom:"Aire sans nom",lat:43.15844,lng:2.87853,km:"Aire de repos",note:null,equip:{}},
+{id:1047,nom:"Aire sans nom",lat:43.17242,lng:-3.90035,km:"Aire de repos",note:null,equip:{}},
+{id:1048,nom:"Aire sans nom",lat:43.17894,lng:-3.907,km:"Aire de repos",note:null,equip:{}},
+{id:1049,nom:"Aire sans nom",lat:43.17762,lng:-2.54475,km:"Aire de repos",note:null,equip:{}},
+{id:1050,nom:"Aire sans nom",lat:43.20397,lng:2.52898,km:"Aire de repos",note:null,equip:{}},
+{id:1051,nom:"Aire sans nom",lat:43.23687,lng:-4.28924,km:"Aire de repos",note:null,equip:{}},
+{id:1052,nom:"Cabecera del valle del Sobra",lat:43.25293,lng:-4.72689,km:"Aire de repos",note:null,equip:{}},
+{id:1053,nom:"Aire sans nom",lat:43.24986,lng:-2.54402,km:"Aire de repos",note:null,equip:{}},
+{id:1054,nom:"Aire sans nom",lat:43.24619,lng:-1.92677,km:"Aire de repos",note:null,equip:{}},
+{id:1055,nom:"France services",lat:43.25316,lng:2.36521,km:"Aire de services",note:null,equip:{}},
+{id:1056,nom:"Aire sans nom",lat:43.26333,lng:-4.62161,km:"Aire de repos",note:null,equip:{}},
+{id:1057,nom:"Aire sans nom",lat:43.27116,lng:-4.2456,km:"Aire de repos",note:null,equip:{}},
+{id:1058,nom:"Aire sans nom",lat:43.28693,lng:-2.15325,km:"Aire de repos",note:null,equip:{}},
+{id:1059,nom:"Portuko aparkalekua",lat:43.28514,lng:-2.13212,km:"Aire de repos",note:null,equip:{}},
+{id:1060,nom:"Aire sans nom",lat:43.30113,lng:-2.34035,km:"Aire de repos",note:null,equip:{}},
+{id:1061,nom:"Aire sans nom",lat:43.3,lng:-2.3372,km:"Aire de repos",note:null,equip:{}},
+{id:1062,nom:"Aire sans nom",lat:43.2988,lng:1.99138,km:"Aire de repos",note:null,equip:{}},
+{id:1063,nom:"Service Carte Grise",lat:43.29751,lng:5.3847,km:"Aire de services",note:null,equip:{}},
+{id:1064,nom:"Reprocopie",lat:43.29652,lng:5.37715,km:"Aire de services",note:null,equip:{}},
+{id:1065,nom:"Mondial Telecom",lat:43.29722,lng:5.37794,km:"Aire de services",note:null,equip:{}},
+{id:1066,nom:"Les 4 Chemins",lat:43.29587,lng:5.38143,km:"Aire de repos",note:null,equip:{}},
+{id:1067,nom:"Aire sans nom",lat:43.31395,lng:-4.84188,km:"Aire de repos",note:null,equip:{}},
+{id:1068,nom:"Aire sans nom",lat:43.30941,lng:-4.54567,km:"Aire de services",note:null,equip:{}},
+{id:1069,nom:"Aire sans nom",lat:43.31023,lng:-4.24329,km:"Aire de repos",note:null,equip:{}},
+{id:1070,nom:"Aire sans nom",lat:43.30656,lng:-2.23924,km:"Aire de repos",note:null,equip:{}},
+{id:1071,nom:"Aire sans nom",lat:43.31008,lng:-2.00853,km:"Aire de repos",note:null,equip:{}},
+{id:1072,nom:"Aire sans nom",lat:43.31025,lng:-0.8561,km:"Aire de repos",note:null,equip:{}},
+{id:1073,nom:"Aire de repos de Serres-Morlaàs (Nord)",lat:43.31421,lng:-0.26689,km:"Aire de repos",note:null,equip:{}},
+{id:1074,nom:"Aire de repos de Serres-Morlaàs (Sud)",lat:43.31251,lng:-0.26331,km:"Aire de repos",note:null,equip:{}},
+{id:1075,nom:"Aire sans nom",lat:43.31272,lng:2.50308,km:"Aire de repos",note:null,equip:{}},
+{id:1076,nom:"Aire sans nom",lat:43.32174,lng:-4.22764,km:"Aire de repos",note:null,equip:{}},
+{id:1077,nom:"Aire sans nom",lat:43.31991,lng:-2.41202,km:"Aire de repos",note:null,equip:{}},
+{id:1078,nom:"Aire sans nom",lat:43.32898,lng:-4.26273,km:"Aire de repos",note:null,equip:{}},
+{id:1079,nom:"Aire sans nom",lat:43.334,lng:-1.89699,km:"Aire de repos",note:null,equip:{}},
+{id:1080,nom:"Aire sans nom",lat:43.33294,lng:1.98457,km:"Aire de repos",note:null,equip:{}},
+{id:1081,nom:"Aire sans nom",lat:43.32837,lng:3.11,km:"Aire de repos",note:null,equip:{}},
+{id:1082,nom:"Aire sans nom",lat:43.33512,lng:-1.70987,km:"Aire de repos",note:null,equip:{}},
+{id:1083,nom:"Aire sans nom",lat:43.34859,lng:-3.84719,km:"Aire de repos",note:null,equip:{}},
+{id:1084,nom:"Aire sans nom",lat:43.36276,lng:-3.194,km:"Aire de repos",note:null,equip:{}},
+{id:1085,nom:"Aire sans nom",lat:43.35724,lng:-1.73492,km:"Aire de repos",note:null,equip:{}},
+{id:1086,nom:"Aire sans nom",lat:43.36008,lng:-0.76588,km:"Aire de repos",note:null,equip:{}},
+{id:1087,nom:"Radio Holland",lat:43.35626,lng:5.33481,km:"Aire de services",note:null,equip:{}},
+{id:1088,nom:"Kurtz Ersa",lat:43.35679,lng:5.33631,km:"Aire de services",note:null,equip:{}},
+{id:1089,nom:"Aire sans nom",lat:43.37267,lng:-1.38803,km:"Aire de repos",note:null,equip:{}},
+{id:1090,nom:"Aire sans nom",lat:43.40465,lng:-3.62339,km:"Aire de repos",note:null,equip:{}},
+{id:1091,nom:"Aire sans nom",lat:43.40354,lng:-3.30989,km:"Aire de repos",note:null,equip:{}},
+{id:1092,nom:"Aire sans nom",lat:43.40618,lng:-1.6285,km:"Aire de repos",note:null,equip:{}},
+{id:1093,nom:"Aire sans nom",lat:43.41045,lng:-0.85127,km:"Aire de repos",note:null,equip:{}},
+{id:1094,nom:"CNI, Passeports, Cartes grises",lat:43.41325,lng:5.22057,km:"Aire de services",note:null,equip:{}},
+{id:1095,nom:"Aire sans nom",lat:43.41781,lng:-2.70979,km:"Aire de repos",note:null,equip:{}},
+{id:1096,nom:"Aire sans nom",lat:43.42336,lng:5.90632,km:"Aire de repos",note:null,equip:{}},
+{id:1097,nom:"Aire sans nom",lat:43.4408,lng:-2.77082,km:"Aire de repos",note:null,equip:{}},
+{id:1098,nom:"Aire sans nom",lat:43.45136,lng:-3.94342,km:"Aire de repos",note:null,equip:{}},
+{id:1099,nom:"Aire sans nom",lat:43.46358,lng:-1.57468,km:"Aire de repos",note:null,equip:{}},
+{id:1100,nom:"Aire sans nom",lat:43.46309,lng:1.32542,km:"Aire de repos",note:null,equip:{}},
+{id:1101,nom:"Aire sans nom",lat:43.47238,lng:-3.91616,km:"Aire de repos",note:null,equip:{}},
+{id:1102,nom:"Aire sans nom",lat:43.46504,lng:2.80168,km:"Aire de repos",note:null,equip:{}},
+{id:1103,nom:"Aire sans nom",lat:43.47119,lng:2.83571,km:"Aire de repos",note:null,equip:{}},
+{id:1104,nom:"Aire de Manoeuvre Iter",lat:43.47169,lng:5.16325,km:"Aire de services",note:null,equip:{}},
+{id:1105,nom:"Aire sans nom",lat:43.46947,lng:5.77865,km:"Aire de repos",note:null,equip:{}},
+{id:1106,nom:"Aire sans nom",lat:43.49027,lng:-0.51403,km:"Aire de repos",note:null,equip:{}},
+{id:1107,nom:"Aire sans nom",lat:43.48616,lng:5.67517,km:"Aire de repos",note:null,equip:{}},
+{id:1108,nom:"Aire sans nom",lat:43.51166,lng:-0.44356,km:"Aire de repos",note:null,equip:{}},
+{id:1109,nom:"Aire sans nom",lat:43.51763,lng:4.36757,km:"Aire de repos",note:null,equip:{}},
+{id:1110,nom:"Aire sans nom",lat:43.54331,lng:-1.10087,km:"Aire de repos",note:null,equip:{}},
+{id:1111,nom:"Aire sans nom",lat:43.55099,lng:0.49135,km:"Aire de repos",note:null,equip:{}},
+{id:1112,nom:"Aire du Château d'Avignon",lat:43.55243,lng:4.40654,km:"Aire de repos",note:null,equip:{}},
+{id:1113,nom:"Aire sans nom",lat:43.57139,lng:6.50732,km:"Aire de repos",note:null,equip:{}},
+{id:1114,nom:"Aire de Camping-car de la Digue",lat:43.58986,lng:-0.74311,km:"Aire de services",note:null,equip:{}},
+{id:1115,nom:"Axxiom services à domicile",lat:43.58508,lng:1.34317,km:"Aire de services",note:null,equip:{}},
+{id:1116,nom:"Aire de Lançon de Provence",lat:43.58991,lng:5.19161,km:"Aire de services",note:null,equip:{}},
+{id:1117,nom:"Aire sans nom",lat:43.58942,lng:6.52926,km:"Aire de repos",note:null,equip:{}},
+{id:1118,nom:"Aire sans nom",lat:43.61874,lng:-0.33333,km:"Aire de repos",note:null,equip:{}},
+{id:1119,nom:"Aire sans nom",lat:43.62914,lng:6.87056,km:"Aire de repos",note:null,equip:{}},
+{id:1120,nom:"Aire de repos D112",lat:43.64265,lng:2.02735,km:"Aire de repos",note:null,equip:{}},
+{id:1121,nom:"Aire sans nom",lat:43.6432,lng:7.05058,km:"Aire de services",note:null,equip:{}},
+{id:1122,nom:"Aire sans nom",lat:43.65766,lng:-0.27366,km:"Aire de repos",note:null,equip:{}},
+{id:1123,nom:"Aire sans nom",lat:43.66116,lng:5.50139,km:"Aire de repos",note:null,equip:{}},
+{id:1124,nom:"Aire sans nom",lat:43.67246,lng:-0.27562,km:"Aire de repos",note:null,equip:{}},
+{id:1125,nom:"Aire sans nom",lat:43.67408,lng:6.22502,km:"Aire de repos",note:null,equip:{}},
+{id:1126,nom:"Aire sans nom",lat:43.67294,lng:6.77269,km:"Aire de repos",note:null,equip:{}},
+{id:1127,nom:"Barbecue, eau, éclairage, sous abri.",lat:43.69211,lng:2.42647,km:"Aire de repos",note:null,equip:{}},
+{id:1128,nom:"Aire sans nom",lat:43.69711,lng:0.07302,km:"Aire de repos",note:null,equip:{}},
+{id:1129,nom:"Aire sans nom",lat:43.7158,lng:0.42345,km:"Aire de repos",note:null,equip:{}},
+{id:1130,nom:"Aire de Gémil",lat:43.73236,lng:1.59081,km:"Aire de repos",note:null,equip:{}},
+{id:1131,nom:"Aire sans nom",lat:43.73641,lng:0.36008,km:"Aire de repos",note:null,equip:{}},
+{id:1132,nom:"Aire de Camping Car des Rives de l'Adour",lat:43.76642,lng:-0.5602,km:"Aire de services",note:null,equip:{}},
+{id:1133,nom:"Aire sans nom",lat:43.76652,lng:4.94509,km:"Aire de repos",note:null,equip:{}},
+{id:1134,nom:"Aire sans nom",lat:43.8197,lng:1.24589,km:"Aire de repos",note:null,equip:{}},
+{id:1135,nom:"Aire sans nom",lat:43.82116,lng:3.6156,km:"Aire de repos",note:null,equip:{}},
+{id:1136,nom:"Camper",lat:43.85427,lng:4.60902,km:"Aire de repos",note:null,equip:{}},
+{id:1137,nom:"Aire sans nom",lat:43.85394,lng:7.19768,km:"Aire de repos",note:null,equip:{}},
+{id:1138,nom:"Aire sans nom",lat:43.87222,lng:3.2181,km:"Aire de repos",note:null,equip:{}},
+{id:1139,nom:"Aire sans nom",lat:43.8734,lng:7.19392,km:"Aire de repos",note:null,equip:{}},
+{id:1140,nom:"Aire sans nom",lat:43.87891,lng:7.23034,km:"Aire de repos",note:null,equip:{}},
+{id:1141,nom:"Aire sans nom",lat:43.87971,lng:7.90596,km:"Aire de repos",note:null,equip:{}},
+{id:1142,nom:"Aire sans nom",lat:43.88732,lng:6.43343,km:"Aire de repos",note:null,equip:{}},
+{id:1143,nom:"Rocade Est, Saint-Avit",lat:43.90935,lng:-0.44868,km:"Aire de repos",note:null,equip:{}},
+{id:1144,nom:"Aire sans nom",lat:43.91539,lng:6.41107,km:"Aire de repos",note:null,equip:{}},
+{id:1145,nom:"Aire sans nom",lat:43.93019,lng:1.08733,km:"Aire de repos",note:null,equip:{}},
+{id:1146,nom:"Aire sans nom",lat:43.93294,lng:2.39421,km:"Aire de repos",note:null,equip:{}},
+{id:1147,nom:"Aire sans nom",lat:43.95285,lng:1.18074,km:"Aire de repos",note:null,equip:{}},
+{id:1148,nom:"Aire sans nom",lat:43.96025,lng:6.3395,km:"Aire de repos",note:null,equip:{}},
+{id:1149,nom:"Aire sans nom",lat:43.95906,lng:6.50999,km:"Aire de repos",note:null,equip:{}},
+{id:1150,nom:"Aire sans nom",lat:43.98262,lng:2.97377,km:"Aire de repos",note:null,equip:{}},
+{id:1151,nom:"Aire sans nom",lat:43.97995,lng:4.22973,km:"Aire de repos",note:null,equip:{}},
+{id:1152,nom:"Arboretum de Saint Lambert",lat:43.98871,lng:5.31812,km:"Aire de repos",note:null,equip:{}},
+{id:1153,nom:"Aire de la Dorgane",lat:43.98516,lng:7.32005,km:"Aire de repos",note:null,equip:{}},
+{id:1154,nom:"Aire sans nom",lat:43.99887,lng:5.15555,km:"Aire de repos",note:null,equip:{}},
+{id:1155,nom:"Aire sans nom",lat:44.00504,lng:5.92258,km:"Aire de repos",note:null,equip:{}},
+{id:1156,nom:"Larzac",lat:44.01875,lng:3.14815,km:"Aire de repos",note:null,equip:{}},
+{id:1157,nom:"Aire sans nom",lat:44.03271,lng:3.31539,km:"Aire de repos",note:null,equip:{}},
+{id:1158,nom:"Aire sans nom",lat:44.02874,lng:6.20553,km:"Aire de repos",note:null,equip:{}},
+{id:1159,nom:"Aire sans nom",lat:44.04792,lng:2.75328,km:"Aire de repos",note:null,equip:{}},
+{id:1160,nom:"Aire sans nom",lat:44.04886,lng:2.7596,km:"Aire de repos",note:null,equip:{}},
+{id:1161,nom:"Parking Halte Larzac",lat:44.04699,lng:3.13598,km:"Aire de repos",note:null,equip:{}},
+{id:1162,nom:"Aire sans nom",lat:44.06555,lng:0.90787,km:"Aire de repos",note:null,equip:{}},
+{id:1163,nom:"Aire sans nom",lat:44.09758,lng:3.9546,km:"Aire de repos",note:null,equip:{}},
+{id:1164,nom:"Aire sans nom",lat:44.11431,lng:3.55306,km:"Aire de repos",note:null,equip:{}},
+{id:1165,nom:"Aire sans nom",lat:44.12332,lng:0.28001,km:"Aire de repos",note:null,equip:{}},
+{id:1166,nom:"Aire du Bourdoux",lat:44.11853,lng:6.79822,km:"Aire de repos",note:null,equip:{}},
+{id:1167,nom:"Aire sans nom",lat:44.12567,lng:3.43931,km:"Aire de repos",note:null,equip:{}},
+{id:1168,nom:"Aire sans nom",lat:44.17945,lng:1.12639,km:"Aire de repos",note:null,equip:{}},
+{id:1169,nom:"Aire Ventouse",lat:44.18248,lng:3.68507,km:"Aire de repos",note:null,equip:{}},
+{id:1170,nom:"Aire sans nom",lat:44.18702,lng:0.54704,km:"Aire de repos",note:null,equip:{}},
+{id:1171,nom:"Aire sans nom",lat:44.18892,lng:4.74612,km:"Aire de repos",note:null,equip:{}},
+{id:1172,nom:"Aire sans nom",lat:44.19908,lng:3.25524,km:"Aire de repos",note:null,equip:{}},
+{id:1173,nom:"Aire du Tableau",lat:44.19746,lng:3.642,km:"Aire de repos",note:null,equip:{}},
+{id:1174,nom:"Aire sans nom",lat:44.2076,lng:0.16286,km:"Aire de repos",note:null,equip:{}},
+{id:1175,nom:"Aire sans nom",lat:44.2057,lng:1.1546,km:"Aire de repos",note:null,equip:{}},
+{id:1176,nom:"Parking Public du Mas de Lafon",lat:44.2216,lng:3.22274,km:"Aire de repos",note:null,equip:{}},
+{id:1177,nom:"Aire sans nom",lat:44.24987,lng:3.95289,km:"Aire de repos",note:null,equip:{}},
+{id:1178,nom:"Aire sans nom",lat:44.25066,lng:3.95738,km:"Aire de repos",note:null,equip:{}},
+{id:1179,nom:"Aire de Jean Sango",lat:44.26271,lng:-0.26171,km:"Aire de repos",note:null,equip:{}},
+{id:1180,nom:"Aire sans nom",lat:44.27052,lng:3.85789,km:"Aire de repos",note:null,equip:{}},
+{id:1181,nom:"Aire sans nom",lat:44.27551,lng:0.33524,km:"Aire de repos",note:null,equip:{}},
+{id:1182,nom:"Aire de Repos Pique-Nique",lat:44.31107,lng:-0.2494,km:"Aire de repos",note:null,equip:{}},
+{id:1183,nom:"Aire sans nom",lat:44.3102,lng:4.95825,km:"Aire de repos",note:null,equip:{}},
+{id:1184,nom:"Bivouac",lat:44.34268,lng:3.57699,km:"Aire de services",note:null,equip:{}},
+{id:1185,nom:"Aire sans nom",lat:44.37065,lng:7.64289,km:"Aire de repos",note:null,equip:{}},
+{id:1186,nom:"Aire sans nom",lat:44.37178,lng:7.65422,km:"Aire de repos",note:null,equip:{}},
+{id:1187,nom:"Aire sans nom",lat:44.37148,lng:7.65192,km:"Aire de repos",note:null,equip:{}},
+{id:1188,nom:"Aire sans nom",lat:44.38039,lng:1.31336,km:"Aire de repos",note:null,equip:{}},
+{id:1189,nom:"Aire sans nom",lat:44.39715,lng:4.92152,km:"Aire de repos",note:null,equip:{}},
+{id:1190,nom:"Aire sans nom",lat:44.43358,lng:6.7421,km:"Aire de repos",note:null,equip:{}},
+{id:1191,nom:"Aire sans nom",lat:44.43569,lng:0.97519,km:"Aire de repos",note:null,equip:{}},
+{id:1192,nom:"Aire sans nom",lat:44.4378,lng:6.41748,km:"Aire de repos",note:null,equip:{}},
+{id:1193,nom:"Aire sans nom",lat:44.46098,lng:4.22439,km:"Aire de repos",note:null,equip:{}},
+{id:1194,nom:"Aire sans nom",lat:44.46894,lng:0.68926,km:"Aire de repos",note:null,equip:{}},
+{id:1195,nom:"Aire sans nom",lat:44.4712,lng:7.9603,km:"Aire de repos",note:null,equip:{}},
+{id:1196,nom:"Aire sans nom",lat:44.48178,lng:0.67299,km:"Aire de repos",note:null,equip:{}},
+{id:1197,nom:"Aire sans nom",lat:44.48795,lng:1.02537,km:"Aire de repos",note:null,equip:{}},
+{id:1198,nom:"Aire sans nom",lat:44.50609,lng:0.21834,km:"Aire de repos",note:null,equip:{}},
+{id:1199,nom:"Aire sans nom",lat:44.52095,lng:0.62027,km:"Aire de repos",note:null,equip:{}},
+{id:1200,nom:"Aire sans nom",lat:44.51847,lng:1.71968,km:"Aire de repos",note:null,equip:{}},
+{id:1201,nom:"Aire sans nom",lat:44.51591,lng:5.7556,km:"Aire de repos",note:null,equip:{}},
+{id:1202,nom:"Aire sans nom",lat:44.52415,lng:5.80395,km:"Aire de repos",note:null,equip:{}},
+{id:1203,nom:"aire de repos",lat:44.52641,lng:0.62667,km:"Aire de repos",note:null,equip:{}},
+{id:1204,nom:"Aire sans nom",lat:44.53902,lng:2.65272,km:"Aire de repos",note:null,equip:{}},
+{id:1205,nom:"Aire sans nom",lat:44.54356,lng:7.72203,km:"Aire de repos",note:null,equip:{}},
+{id:1206,nom:"Aire sans nom",lat:44.5738,lng:0.62627,km:"Aire de repos",note:null,equip:{}},
+{id:1207,nom:"Aire sans nom",lat:44.57301,lng:2.1574,km:"Aire de repos",note:null,equip:{}},
+{id:1208,nom:"Aire sans nom",lat:44.57033,lng:4.50195,km:"Aire de repos",note:null,equip:{}},
+{id:1209,nom:"Aire sans nom",lat:44.58325,lng:0.62279,km:"Aire de repos",note:null,equip:{}},
+{id:1210,nom:"Aire sans nom",lat:44.57888,lng:4.15461,km:"Aire de repos",note:null,equip:{}},
+{id:1211,nom:"Aire sans nom",lat:44.60661,lng:0.60496,km:"Aire de repos",note:null,equip:{}},
+{id:1212,nom:"Aire sans nom",lat:44.6159,lng:2.20721,km:"Aire de repos",note:null,equip:{}},
+{id:1213,nom:"Aire sans nom",lat:44.61958,lng:2.9516,km:"Aire de repos",note:null,equip:{}},
+{id:1214,nom:"Aire sans nom",lat:44.62027,lng:8.13204,km:"Aire de repos",note:null,equip:{}},
+{id:1215,nom:"Aire sans nom",lat:44.63933,lng:0.34805,km:"Aire de repos",note:null,equip:{}},
+{id:1216,nom:"Aire sans nom",lat:44.661,lng:7.65882,km:"Aire de repos",note:null,equip:{}},
+{id:1217,nom:"Aire sans nom",lat:44.67153,lng:0.00429,km:"Aire de repos",note:null,equip:{}},
+{id:1218,nom:"Aire sans nom",lat:44.67088,lng:4.09557,km:"Aire de repos",note:null,equip:{}},
+{id:1219,nom:"Aire sans nom",lat:44.66791,lng:5.86361,km:"Aire de repos",note:null,equip:{}},
+{id:1220,nom:"Aire sans nom",lat:44.66629,lng:7.80591,km:"Aire de repos",note:null,equip:{}},
+{id:1221,nom:"Aire sans nom",lat:44.67749,lng:1.71886,km:"Aire de repos",note:null,equip:{}},
+{id:1222,nom:"Aire sans nom",lat:44.6767,lng:1.74717,km:"Aire de repos",note:null,equip:{}},
+{id:1223,nom:"Aire sans nom",lat:44.67555,lng:3.06997,km:"Aire de repos",note:null,equip:{}},
+{id:1224,nom:"Aire sans nom",lat:44.68552,lng:1.93368,km:"Aire de repos",note:null,equip:{}},
+{id:1225,nom:"Aire sans nom",lat:44.69216,lng:5.88802,km:"Aire de repos",note:null,equip:{}},
+{id:1226,nom:"Aire sans nom",lat:44.69924,lng:5.89459,km:"Aire de repos",note:null,equip:{}},
+{id:1227,nom:"Aire sans nom",lat:44.70242,lng:5.90171,km:"Aire de repos",note:null,equip:{}},
+{id:1228,nom:"Aire sans nom",lat:44.70178,lng:5.924,km:"Aire de repos",note:null,equip:{}},
+{id:1229,nom:"Aire sans nom",lat:44.70521,lng:5.91177,km:"Aire de repos",note:null,equip:{}},
+{id:1230,nom:"Aire sans nom",lat:44.70576,lng:5.90982,km:"Aire de repos",note:null,equip:{}},
+{id:1231,nom:"Aire du Pont de Romane",lat:44.72082,lng:5.09594,km:"Aire de repos",note:null,equip:{}},
+{id:1232,nom:"Aire sans nom",lat:44.72921,lng:0.42359,km:"Aire de repos",note:null,equip:{}},
+{id:1233,nom:"Aire sans nom",lat:44.73002,lng:0.54933,km:"Aire de repos",note:null,equip:{}},
+{id:1234,nom:"Aire sans nom",lat:44.73228,lng:6.56893,km:"Aire de repos",note:null,equip:{}},
+{id:1235,nom:"Aire sans nom",lat:44.74547,lng:3.34005,km:"Aire de repos",note:null,equip:{}},
+{id:1236,nom:"Aire de la Scie",lat:44.78451,lng:5.14905,km:"Aire de repos",note:null,equip:{}},
+{id:1237,nom:"Aire sans nom",lat:44.78643,lng:0.52375,km:"Aire de repos",note:null,equip:{}},
+{id:1238,nom:"Aire sans nom",lat:44.78892,lng:0.52587,km:"Aire de repos",note:null,equip:{}},
+{id:1239,nom:"Aire sans nom",lat:44.79377,lng:2.75988,km:"Aire de repos",note:null,equip:{}},
+{id:1240,nom:"Aire de la Rivière",lat:44.79197,lng:5.09105,km:"Aire de repos",note:null,equip:{}},
+{id:1241,nom:"Aire du Pont Neuf",lat:44.78806,lng:5.19036,km:"Aire de repos",note:null,equip:{}},
+{id:1242,nom:"Aire du Savel",lat:44.80593,lng:5.11,km:"Aire de repos",note:null,equip:{}},
+{id:1243,nom:"Aire sans nom",lat:44.81237,lng:5.71467,km:"Aire de repos",note:null,equip:{}},
+{id:1244,nom:"Aire sans nom",lat:44.81492,lng:5.7269,km:"Aire de repos",note:null,equip:{}},
+{id:1245,nom:"Aire sans nom",lat:44.83236,lng:1.1331,km:"Aire de repos",note:null,equip:{}},
+{id:1246,nom:"Barrage de Sarrans",lat:44.82864,lng:2.74199,km:"Aire de repos",note:null,equip:{}},
+{id:1247,nom:"Aire sans nom",lat:44.83073,lng:3.45849,km:"Aire de repos",note:null,equip:{}},
+{id:1248,nom:"Aire sans nom",lat:44.8275,lng:4.57673,km:"Aire de repos",note:null,equip:{}},
+{id:1249,nom:"Aire sans nom",lat:44.82983,lng:4.6509,km:"Aire de repos",note:null,equip:{}},
+{id:1250,nom:"Aire sans nom",lat:44.83162,lng:6.58262,km:"Aire de repos",note:null,equip:{}},
+{id:1251,nom:"Aire sans nom",lat:44.84281,lng:0.37972,km:"Aire de repos",note:null,equip:{}},
+{id:1252,nom:"Aire sans nom",lat:44.83905,lng:6.49898,km:"Aire de repos",note:null,equip:{}},
+{id:1253,nom:"Aire sans nom",lat:44.85287,lng:1.20235,km:"Aire de repos",note:null,equip:{}},
+{id:1254,nom:"Aire sans nom",lat:44.85148,lng:6.5816,km:"Aire de repos",note:null,equip:{}},
+{id:1255,nom:"Aire sans nom",lat:44.8591,lng:1.20178,km:"Aire de repos",note:null,equip:{}},
+{id:1256,nom:"Aire sans nom",lat:44.85651,lng:3.49342,km:"Aire de repos",note:null,equip:{}},
+{id:1257,nom:"Aire sans nom",lat:44.86814,lng:3.01663,km:"Aire de repos",note:null,equip:{}},
+{id:1258,nom:"Aire sans nom",lat:44.8844,lng:1.48266,km:"Aire de repos",note:null,equip:{}},
+{id:1259,nom:"Aire sans nom",lat:44.88418,lng:2.45042,km:"Aire de repos",note:null,equip:{}},
+{id:1260,nom:"Aire sans nom",lat:44.88353,lng:4.5263,km:"Aire de repos",note:null,equip:{}},
+{id:1261,nom:"Aire sans nom",lat:44.90298,lng:3.79473,km:"Aire de repos",note:null,equip:{}},
+{id:1262,nom:"Aire sans nom",lat:44.92852,lng:6.87459,km:"Aire de repos",note:null,equip:{}},
+{id:1263,nom:"Aire sans nom",lat:44.99434,lng:0.62681,km:"Aire de repos",note:null,equip:{}},
+{id:1264,nom:"Aire sans nom",lat:44.99177,lng:1.82394,km:"Aire de repos",note:null,equip:{}},
+{id:1265,nom:"Aire sans nom",lat:45.00014,lng:2.64722,km:"Aire de repos",note:null,equip:{}},
+{id:1266,nom:"Aire sans nom",lat:44.99643,lng:3.81879,km:"Aire de repos",note:null,equip:{}},
+{id:1267,nom:"Aire sans nom",lat:45.02033,lng:1.07484,km:"Aire de repos",note:null,equip:{}},
+{id:1268,nom:"Aire sans nom",lat:45.01782,lng:2.15816,km:"Aire de repos",note:null,equip:{}},
+{id:1269,nom:"Aire sans nom",lat:45.01969,lng:2.19459,km:"Aire de repos",note:null,equip:{}},
+{id:1270,nom:"Aire sans nom",lat:45.02171,lng:7.74736,km:"Aire de repos",note:null,equip:{}},
+{id:1271,nom:"Aire sans nom",lat:45.02845,lng:2.6943,km:"Aire de repos",note:null,equip:{}},
+{id:1272,nom:"Col de Peyra Taillade",lat:45.035,lng:3.65069,km:"Aire de repos",note:null,equip:{}},
+{id:1273,nom:"Aire sans nom",lat:45.0447,lng:4.43212,km:"Aire de repos",note:null,equip:{}},
+{id:1274,nom:"Aire de la Bayette",lat:45.04241,lng:6.05906,km:"Aire de repos",note:null,equip:{}},
+{id:1275,nom:"Aire de la Bayette",lat:45.04324,lng:6.05879,km:"Aire de repos",note:null,equip:{}},
+{id:1276,nom:"Aire sans nom",lat:45.06247,lng:0.67767,km:"Aire de repos",note:null,equip:{}},
+{id:1277,nom:"Aire sans nom",lat:45.06572,lng:0.68595,km:"Aire de repos",note:null,equip:{}},
+{id:1278,nom:"Aire sans nom",lat:45.07034,lng:1.64492,km:"Aire de repos",note:null,equip:{}},
+{id:1279,nom:"Aire sans nom",lat:45.0716,lng:2.65984,km:"Aire de repos",note:null,equip:{}},
+{id:1280,nom:"Aire sans nom",lat:45.12545,lng:2.94329,km:"Aire de repos",note:null,equip:{}},
+{id:1281,nom:"Aire sans nom",lat:45.12624,lng:2.94711,km:"Aire de repos",note:null,equip:{}},
+{id:1282,nom:"Aire sans nom",lat:45.12766,lng:2.9578,km:"Aire de repos",note:null,equip:{}},
+{id:1283,nom:"Aire sans nom",lat:45.12595,lng:3.0176,km:"Aire de repos",note:null,equip:{}},
+{id:1284,nom:"Aire sans nom",lat:45.14444,lng:1.08482,km:"Aire de repos",note:null,equip:{}},
+{id:1285,nom:"Aire sans nom",lat:45.14384,lng:3.55614,km:"Aire de repos",note:null,equip:{}},
+{id:1286,nom:"Aire sans nom",lat:45.13544,lng:7.08792,km:"Aire de services",note:null,equip:{}},
+{id:1287,nom:"Aire de service",lat:45.14753,lng:2.49993,km:"Aire de services",note:null,equip:{}},
+{id:1288,nom:"Bivouac",lat:45.15389,lng:2.63145,km:"Aire de repos",note:null,equip:{}},
+{id:1289,nom:"Aire sans nom",lat:45.16248,lng:3.03145,km:"Aire de repos",note:null,equip:{}},
+{id:1290,nom:"Aire sans nom",lat:45.19805,lng:3.08453,km:"Aire de repos",note:null,equip:{}},
+{id:1291,nom:"Aire sans nom",lat:45.20797,lng:7.65938,km:"Aire de services",note:null,equip:{}},
+{id:1292,nom:"Aire de Saint-Sauveur",lat:45.22482,lng:3.11526,km:"Aire de repos",note:null,equip:{}},
+{id:1293,nom:"Aire sans nom",lat:45.23432,lng:0.81195,km:"Aire de repos",note:null,equip:{}},
+{id:1294,nom:"Aire sans nom",lat:45.2331,lng:1.1307,km:"Aire de repos",note:null,equip:{}},
+{id:1295,nom:"Aire sans nom",lat:45.22803,lng:6.7697,km:"Aire de repos",note:null,equip:{}},
+{id:1296,nom:"Aire sans nom",lat:45.24425,lng:4.96026,km:"Aire de repos",note:null,equip:{}},
+{id:1297,nom:"Aire sans nom",lat:45.2703,lng:0.8589,km:"Aire de repos",note:null,equip:{}},
+{id:1298,nom:"Aire sans nom",lat:45.27307,lng:1.78694,km:"Aire de repos",note:null,equip:{}},
+{id:1299,nom:"Aire de Saint Rambert d'Albon - Est",lat:45.27646,lng:4.82908,km:"Aire de services",note:null,equip:{}},
+{id:1300,nom:"Aire sans nom",lat:45.30054,lng:-0.41261,km:"Aire de repos",note:null,equip:{}},
+{id:1301,nom:"Aire sans nom",lat:45.30173,lng:3.18895,km:"Aire de repos",note:null,equip:{}},
+{id:1302,nom:"Aire du Voironnais",lat:45.29675,lng:5.58008,km:"Aire de repos",note:null,equip:{}},
+{id:1303,nom:"Aire sans nom",lat:45.31522,lng:6.3334,km:"Aire de repos",note:null,equip:{}},
+{id:1304,nom:"Aire sans nom",lat:45.34745,lng:6.30243,km:"Aire de repos",note:null,equip:{}},
+{id:1305,nom:"Aire sans nom",lat:45.35148,lng:6.70359,km:"Aire de repos",note:null,equip:{}},
+{id:1306,nom:"Aire sans nom",lat:45.35766,lng:3.90007,km:"Aire de repos",note:null,equip:{}},
+{id:1307,nom:"Combe de l'Ours",lat:45.35779,lng:5.83291,km:"Aire de repos",note:null,equip:{}},
+{id:1308,nom:"Aire de repos de la Bouchette",lat:45.38235,lng:0.63336,km:"Aire de repos",note:null,equip:{}},
+{id:1309,nom:"Aire sans nom",lat:45.3762,lng:1.13844,km:"Aire de repos",note:null,equip:{}},
+{id:1310,nom:"Aire sans nom",lat:45.38732,lng:6.49298,km:"Aire de repos",note:null,equip:{}},
+{id:1311,nom:"Aire sans nom",lat:45.4038,lng:0.59927,km:"Aire de repos",note:null,equip:{}},
+{id:1312,nom:"Aire sans nom",lat:45.39991,lng:5.34895,km:"Aire de repos",note:null,equip:{}},
+{id:1313,nom:"Pont de l'Ouliette",lat:45.39866,lng:7.04348,km:"Aire de repos",note:null,equip:{}},
+{id:1314,nom:"Aire sans nom",lat:45.40952,lng:0.56821,km:"Aire de repos",note:null,equip:{}},
+{id:1315,nom:"Aire sans nom",lat:45.40909,lng:5.33991,km:"Aire de repos",note:null,equip:{}},
+{id:1316,nom:"Aire sans nom",lat:45.40604,lng:5.34623,km:"Aire de repos",note:null,equip:{}},
+{id:1317,nom:"Pont de la Neige",lat:45.40651,lng:7.02783,km:"Aire de repos",note:null,equip:{}},
+{id:1318,nom:"Aire sans nom",lat:45.4209,lng:0.5435,km:"Aire de repos",note:null,equip:{}},
+{id:1319,nom:"Aire sans nom",lat:45.43174,lng:0.48853,km:"Aire de repos",note:null,equip:{}},
+{id:1320,nom:"Aire sans nom",lat:45.44379,lng:-0.40665,km:"Aire de repos",note:null,equip:{}},
+{id:1321,nom:"Aire sans nom",lat:45.44756,lng:5.85842,km:"Aire de repos",note:null,equip:{}},
+{id:1322,nom:"Aire sans nom",lat:45.46883,lng:2.14607,km:"Aire de repos",note:null,equip:{}},
+{id:1323,nom:"Aire sans nom",lat:45.46595,lng:6.40251,km:"Aire de repos",note:null,equip:{}},
+{id:1324,nom:"Aire sans nom",lat:45.49247,lng:0.94574,km:"Aire de repos",note:null,equip:{}},
+{id:1325,nom:"Aire sans nom",lat:45.49224,lng:4.75474,km:"Aire de repos",note:null,equip:{}},
+{id:1326,nom:"Aire sans nom",lat:45.49586,lng:0.94757,km:"Aire de repos",note:null,equip:{}},
+{id:1327,nom:"Aire sans nom",lat:45.51438,lng:5.30394,km:"Aire de repos",note:null,equip:{}},
+{id:1328,nom:"Aire sans nom",lat:45.53477,lng:0.82844,km:"Aire de repos",note:null,equip:{}},
+{id:1329,nom:"Aire sans nom",lat:45.53136,lng:0.96677,km:"Aire de repos",note:null,equip:{}},
+{id:1330,nom:"Aire sans nom",lat:45.53541,lng:0.96965,km:"Aire de repos",note:null,equip:{}},
+{id:1331,nom:"Aire d'accueil de camping-cars de Treignac",lat:45.54346,lng:1.80025,km:"Aire de services",note:null,equip:{}},
+{id:1332,nom:"Aire sans nom",lat:45.54165,lng:2.69831,km:"Aire de repos",note:null,equip:{}},
+{id:1333,nom:"Aire sans nom",lat:45.54432,lng:6.61536,km:"Aire de repos",note:null,equip:{}},
+{id:1334,nom:"Aire sans nom",lat:45.54986,lng:2.88572,km:"Aire de repos",note:null,equip:{}},
+{id:1335,nom:"Aire sans nom",lat:45.55113,lng:6.62863,km:"Aire de repos",note:null,equip:{}},
+{id:1336,nom:"Aire sans nom",lat:45.55247,lng:6.63673,km:"Aire de repos",note:null,equip:{}},
+{id:1337,nom:"Aire sans nom",lat:45.55914,lng:2.94689,km:"Aire de repos",note:null,equip:{}},
+{id:1338,nom:"Aire sans nom",lat:45.57444,lng:0.97276,km:"Aire de repos",note:null,equip:{}},
+{id:1339,nom:"Aire sans nom",lat:45.57856,lng:2.9367,km:"Aire de repos",note:null,equip:{}},
+{id:1340,nom:"Aire sans nom",lat:45.58654,lng:2.93608,km:"Aire de repos",note:null,equip:{}},
+{id:1341,nom:"Aire sans nom",lat:45.6014,lng:2.70835,km:"Aire de repos",note:null,equip:{}},
+{id:1342,nom:"Aire sans nom",lat:45.60388,lng:2.72747,km:"Aire de repos",note:null,equip:{}},
+{id:1343,nom:"Aire sans nom",lat:45.59581,lng:2.75926,km:"Aire de repos",note:null,equip:{}},
+{id:1344,nom:"Aire sans nom",lat:45.60473,lng:7.78201,km:"Aire de repos",note:null,equip:{}},
+{id:1345,nom:"Aire d'Arrèt \"La Rivière\"",lat:45.60669,lng:-0.93586,km:"Aire de repos",note:null,equip:{}},
+{id:1346,nom:"Aire d'Arrèt \"La Rivière\"",lat:45.60717,lng:-0.93464,km:"Aire de repos",note:null,equip:{}},
+{id:1347,nom:"Aire sans nom",lat:45.60983,lng:2.71997,km:"Aire de repos",note:null,equip:{}},
+{id:1348,nom:"Aire sans nom",lat:45.63183,lng:4.35575,km:"Aire de repos",note:null,equip:{}},
+{id:1349,nom:"Aire sans nom",lat:45.65427,lng:7.15487,km:"Aire de repos",note:null,equip:{}},
+{id:1350,nom:"Aire sans nom",lat:45.65853,lng:3.0562,km:"Aire de repos",note:null,equip:{}},
+{id:1351,nom:"Aire sans nom",lat:45.67304,lng:-0.99948,km:"Aire de repos",note:null,equip:{}},
+{id:1352,nom:"Aire de la Banne d'Ordanche",lat:45.6663,lng:2.72427,km:"Aire de repos",note:null,equip:{}},
+{id:1353,nom:"Aire sans nom",lat:45.67689,lng:-0.99879,km:"Aire de repos",note:null,equip:{}},
+{id:1354,nom:"Aire sans nom",lat:45.67693,lng:1.002,km:"Aire de repos",note:null,equip:{}},
+{id:1355,nom:"Aire sans nom",lat:45.68123,lng:7.19517,km:"Aire de repos",note:null,equip:{}},
+{id:1356,nom:"Aire sans nom",lat:45.69001,lng:-0.46714,km:"Aire de repos",note:null,equip:{}},
+{id:1357,nom:"Aire sans nom",lat:45.68509,lng:-0.44598,km:"Aire de repos",note:null,equip:{}},
+{id:1358,nom:"Aire sans nom",lat:45.69366,lng:0.58825,km:"Aire de repos",note:null,equip:{}},
+{id:1359,nom:"Aire sans nom",lat:45.69051,lng:2.8424,km:"Aire de repos",note:null,equip:{}},
+{id:1360,nom:"Aire de Chermignac Est",lat:45.704,lng:-0.65113,km:"Aire de repos",note:null,equip:{}},
+{id:1361,nom:"Aire de Chermignac Ouest",lat:45.70468,lng:-0.65252,km:"Aire de repos",note:null,equip:{}},
+{id:1362,nom:"Aire sans nom",lat:45.7016,lng:4.60166,km:"Aire de repos",note:null,equip:{}},
+{id:1363,nom:"Aire sans nom",lat:45.69911,lng:4.60838,km:"Aire de repos",note:null,equip:{}},
+{id:1364,nom:"Aire sans nom",lat:45.70345,lng:4.6259,km:"Aire de repos",note:null,equip:{}},
+{id:1365,nom:"Aire sans nom",lat:45.70317,lng:4.6412,km:"Aire de repos",note:null,equip:{}},
+{id:1366,nom:"Aire sans nom",lat:45.69714,lng:4.65197,km:"Aire de repos",note:null,equip:{}},
+{id:1367,nom:"Aire sans nom",lat:45.70022,lng:4.64837,km:"Aire de repos",note:null,equip:{}},
+{id:1368,nom:"Aire sans nom",lat:45.70605,lng:3.04676,km:"Aire de repos",note:null,equip:{}},
+{id:1369,nom:"Aire sans nom",lat:45.71292,lng:5.53399,km:"Aire de repos",note:null,equip:{}},
+{id:1370,nom:"Aire sans nom",lat:45.70963,lng:5.5362,km:"Aire de repos",note:null,equip:{}},
+{id:1371,nom:"Aire sans nom",lat:45.71071,lng:5.54788,km:"Aire de repos",note:null,equip:{}},
+{id:1372,nom:"Aire sans nom",lat:45.71572,lng:3.37735,km:"Aire de repos",note:null,equip:{}},
+{id:1373,nom:"Aire sans nom",lat:45.71716,lng:3.38698,km:"Aire de repos",note:null,equip:{}},
+{id:1374,nom:"La Cascade",lat:45.72711,lng:6.54883,km:"Aire de repos",note:null,equip:{}},
+{id:1375,nom:"Pas du Loup",lat:45.73305,lng:6.56139,km:"Aire de repos",note:null,equip:{}},
+{id:1376,nom:"Aire sans nom",lat:45.74379,lng:7.54471,km:"Aire de repos",note:null,equip:{}},
+{id:1377,nom:"Aire sans nom",lat:45.75676,lng:3.97077,km:"Aire de repos",note:null,equip:{}},
+{id:1378,nom:"Aire sans nom",lat:45.76135,lng:6.53733,km:"Aire de repos",note:null,equip:{}},
+{id:1379,nom:"Aire sans nom",lat:45.76072,lng:7.54308,km:"Aire de repos",note:null,equip:{}},
+{id:1380,nom:"Aire sans nom",lat:45.76764,lng:3.02526,km:"Aire de repos",note:null,equip:{}},
+{id:1381,nom:"Aire sans nom",lat:45.77298,lng:7.56797,km:"Aire de repos",note:null,equip:{}},
+{id:1382,nom:"Covalou",lat:45.77553,lng:7.59355,km:"Aire de repos",note:null,equip:{}},
+{id:1383,nom:"Aire sans nom",lat:45.78813,lng:3.91949,km:"Aire de repos",note:null,equip:{}},
+{id:1384,nom:"Aire d'accueil de Quirieu",lat:45.7888,lng:5.43485,km:"Aire de repos",note:null,equip:{}},
+{id:1385,nom:"Aire sans nom",lat:45.80222,lng:6.72187,km:"Aire de repos",note:null,equip:{}},
+{id:1386,nom:"Aire sans nom",lat:45.80418,lng:7.58679,km:"Aire de repos",note:null,equip:{}},
+{id:1387,nom:"Picnic",lat:45.81258,lng:0.65004,km:"Aire de repos",note:null,equip:{}},
+{id:1388,nom:"Aire sans nom",lat:45.80972,lng:3.88096,km:"Aire de repos",note:null,equip:{}},
+{id:1389,nom:"Étang des rochers",lat:45.821,lng:-0.41773,km:"Aire de repos",note:null,equip:{}},
+{id:1390,nom:"Aire sans nom",lat:45.82322,lng:3.84238,km:"Aire de repos",note:null,equip:{}},
+{id:1391,nom:"Aire sans nom",lat:45.81882,lng:7.32139,km:"Aire de repos",note:null,equip:{}},
+{id:1392,nom:"Aire sans nom",lat:45.82118,lng:7.57508,km:"Aire de repos",note:null,equip:{}},
+{id:1393,nom:"Aire sans nom",lat:45.83963,lng:-0.81123,km:"Aire de repos",note:null,equip:{}},
+{id:1394,nom:"Aire sans nom",lat:45.84227,lng:2.79303,km:"Aire de repos",note:null,equip:{}},
+{id:1395,nom:"Aire d'Arret du Bois Souchet",lat:45.84814,lng:-0.95425,km:"Aire de repos",note:null,equip:{}},
+{id:1396,nom:"Aire d'Arrêt Les Prises du Mitant",lat:45.8456,lng:-0.95206,km:"Aire de repos",note:null,equip:{}},
+{id:1397,nom:"Aire sans nom",lat:45.8545,lng:4.71619,km:"Aire de repos",note:null,equip:{}},
+{id:1398,nom:"Aire sans nom",lat:45.85612,lng:4.62902,km:"Aire de repos",note:null,equip:{}},
+{id:1399,nom:"Aire d'Arrêt de l'Houmée",lat:45.89012,lng:-0.96423,km:"Aire de repos",note:null,equip:{}},
+{id:1400,nom:"Aire sans nom",lat:45.89252,lng:6.66527,km:"Aire de repos",note:null,equip:{}},
+{id:1401,nom:"Aire sans nom",lat:45.89857,lng:2.42792,km:"Aire de repos",note:null,equip:{}},
+{id:1402,nom:"Aire sans nom",lat:45.89977,lng:3.32634,km:"Aire de repos",note:null,equip:{}},
+{id:1403,nom:"Aire sans nom",lat:45.90177,lng:7.61741,km:"Aire de repos",note:null,equip:{}},
+{id:1404,nom:"Aire sans nom",lat:45.90827,lng:6.17238,km:"Aire de repos",note:null,equip:{}},
+{id:1405,nom:"Aire sans nom",lat:45.92386,lng:3.14213,km:"Aire de repos",note:null,equip:{}},
+{id:1406,nom:"Borne de vidange camping car",lat:45.92598,lng:1.1722,km:"Aire de services",note:null,equip:{}},
+{id:1407,nom:"Aire sans nom",lat:45.92599,lng:2.71878,km:"Aire de repos",note:null,equip:{}},
+{id:1408,nom:"Aire sans nom",lat:45.92626,lng:2.71773,km:"Aire de repos",note:null,equip:{}},
+{id:1409,nom:"F.I Taxi Ambérieu-en-Bugey",lat:45.92978,lng:5.35212,km:"Aire de services",note:null,equip:{}},
+{id:1410,nom:"Aire sans nom",lat:45.92672,lng:6.63313,km:"Aire de repos",note:null,equip:{}},
+{id:1411,nom:"Aire sans nom",lat:45.94183,lng:5.48194,km:"Aire de repos",note:null,equip:{}},
+{id:1412,nom:"Aire sans nom",lat:45.97846,lng:2.18785,km:"Aire de repos",note:null,equip:{}},
+{id:1413,nom:"Aire sans nom",lat:45.99972,lng:6.00986,km:"Aire de repos",note:null,equip:{}},
+{id:1414,nom:"Aire sans nom",lat:46.0216,lng:0.65722,km:"Aire de services",note:null,equip:{}},
+{id:1415,nom:"Aire sans nom",lat:46.01786,lng:3.65687,km:"Aire de repos",note:null,equip:{}},
+{id:1416,nom:"Aire sans nom",lat:46.01518,lng:8.19921,km:"Aire de repos",note:null,equip:{}},
+{id:1417,nom:"Aire sans nom",lat:46.05875,lng:6.29054,km:"Aire de repos",note:null,equip:{}},
+{id:1418,nom:"Notre-Dame des Voyageurs",lat:46.08823,lng:6.03705,km:"Aire de repos",note:null,equip:{}},
+{id:1419,nom:"Aire sans nom",lat:46.11344,lng:3.64097,km:"Aire de repos",note:null,equip:{}},
+{id:1420,nom:"Aire sans nom",lat:46.10654,lng:4.61305,km:"Aire de repos",note:null,equip:{}},
+{id:1421,nom:"Aire sans nom",lat:46.1269,lng:4.71527,km:"Aire de repos",note:null,equip:{}},
+{id:1422,nom:"Aire sans nom",lat:46.14707,lng:2.20471,km:"Aire de repos",note:null,equip:{}},
+{id:1423,nom:"Aire sans nom",lat:46.16487,lng:4.44542,km:"Aire de repos",note:null,equip:{}},
+{id:1424,nom:"Aire sans nom",lat:46.19166,lng:6.33432,km:"Aire de services",note:null,equip:{}},
+{id:1425,nom:"Aire sans nom",lat:46.18626,lng:7.32695,km:"Aire de repos",note:null,equip:{}},
+{id:1426,nom:"Aire sans nom",lat:46.21491,lng:1.07673,km:"Aire de repos",note:null,equip:{}},
+{id:1427,nom:"Aire sans nom",lat:46.21562,lng:3.69096,km:"Aire de repos",note:null,equip:{}},
+{id:1428,nom:"Aire sans nom",lat:46.22957,lng:3.6536,km:"Aire de repos",note:null,equip:{}},
+{id:1429,nom:"Aire sans nom",lat:46.23263,lng:6.06997,km:"Aire de repos",note:null,equip:{}},
+{id:1430,nom:"Aire sans nom",lat:46.23174,lng:7.52631,km:"Aire de repos",note:null,equip:{}},
+{id:1431,nom:"Aire sans nom",lat:46.23762,lng:1.49193,km:"Aire de repos",note:null,equip:{}},
+{id:1432,nom:"Aire sans nom",lat:46.24442,lng:3.17593,km:"Aire de repos",note:null,equip:{}},
+{id:1433,nom:"Aire sans nom",lat:46.24541,lng:6.8814,km:"Aire de repos",note:null,equip:{}},
+{id:1434,nom:"Aire sans nom",lat:46.2718,lng:4.76979,km:"Aire de repos",note:null,equip:{}},
+{id:1435,nom:"Aire sans nom",lat:46.29202,lng:-0.26944,km:"Aire de repos",note:null,equip:{}},
+{id:1436,nom:"Aire sans nom",lat:46.28873,lng:6.12622,km:"Aire de repos",note:null,equip:{}},
+{id:1437,nom:"Aire sans nom",lat:46.31124,lng:4.98549,km:"Aire de repos",note:null,equip:{}},
+{id:1438,nom:"Aire sans nom",lat:46.33478,lng:2.81878,km:"Aire de repos",note:null,equip:{}},
+{id:1439,nom:"Aire sans nom",lat:46.35876,lng:4.69476,km:"Aire de repos",note:null,equip:{}},
+{id:1440,nom:"Aire de Repos du Bois Clair",lat:46.37687,lng:4.67179,km:"Aire de repos",note:null,equip:{}},
+{id:1441,nom:"Aire sans nom",lat:46.37955,lng:5.41535,km:"Aire de repos",note:null,equip:{}},
+{id:1442,nom:"Aire sans nom",lat:46.39308,lng:-1.4014,km:"Aire de repos",note:null,equip:{}},
+{id:1443,nom:"O2",lat:46.41275,lng:-0.20553,km:"Aire de services",note:null,equip:{}},
+{id:1444,nom:"La Chicane",lat:46.42296,lng:-0.71064,km:"Aire de repos",note:null,equip:{}},
+{id:1445,nom:"Aire sans nom",lat:46.44251,lng:4.15254,km:"Aire de repos",note:null,equip:{}},
+{id:1446,nom:"Aire sans nom",lat:46.45489,lng:6.8524,km:"Aire de repos",note:null,equip:{}},
+{id:1447,nom:"Aire sans nom",lat:46.45561,lng:6.85444,km:"Aire de repos",note:null,equip:{}},
+{id:1448,nom:"Aire sans nom",lat:46.48221,lng:5.36564,km:"Aire de repos",note:null,equip:{}},
+{id:1449,nom:"Jordillon",lat:46.50522,lng:6.70958,km:"Aire de repos",note:null,equip:{}},
+{id:1450,nom:"Aire sans nom",lat:46.53245,lng:2.06277,km:"Aire de repos",note:null,equip:{}},
+{id:1451,nom:"Aire sans nom",lat:46.5382,lng:6.60909,km:"Aire de repos",note:null,equip:{}},
+{id:1452,nom:"Aire sans nom",lat:46.53751,lng:6.6096,km:"Aire de repos",note:null,equip:{}},
+{id:1453,nom:"Aire sans nom",lat:46.54488,lng:6.64305,km:"Aire de repos",note:null,equip:{}},
+{id:1454,nom:"Aire sans nom",lat:46.54036,lng:7.87386,km:"Aire de repos",note:null,equip:{}},
+{id:1455,nom:"Aire sans nom",lat:46.55548,lng:5.11194,km:"Aire de repos",note:null,equip:{}},
+{id:1456,nom:"Aire sans nom",lat:46.57111,lng:5.98935,km:"Aire de repos",note:null,equip:{}},
+{id:1457,nom:"Aire sans nom",lat:46.57265,lng:5.98879,km:"Aire de repos",note:null,equip:{}},
+{id:1458,nom:"Aire sans nom",lat:46.61042,lng:3.56045,km:"Aire de repos",note:null,equip:{}},
+{id:1459,nom:"Aire sans nom",lat:46.63482,lng:7.8942,km:"Aire de repos",note:null,equip:{}},
+{id:1460,nom:"Aire sans nom",lat:46.67764,lng:7.53022,km:"Aire de repos",note:null,equip:{}},
+{id:1461,nom:"Aire sans nom",lat:46.68638,lng:-1.92854,km:"Aire de repos",note:null,equip:{}},
+{id:1462,nom:"Aire sans nom",lat:46.70988,lng:-0.61321,km:"Aire de repos",note:null,equip:{}},
+{id:1463,nom:"Aire sans nom",lat:46.70973,lng:-0.59609,km:"Aire de repos",note:null,equip:{}},
+{id:1464,nom:"Aire sans nom",lat:46.71245,lng:2.9924,km:"Aire de repos",note:null,equip:{}},
+{id:1465,nom:"Aire sans nom",lat:46.7144,lng:7.97522,km:"Aire de repos",note:null,equip:{}},
+{id:1466,nom:"Aire sans nom",lat:46.72847,lng:6.08618,km:"Aire de repos",note:null,equip:{}},
+{id:1467,nom:"Aire sans nom",lat:46.73762,lng:0.4645,km:"Aire de repos",note:null,equip:{}},
+{id:1468,nom:"Aire sans nom",lat:46.77347,lng:-0.57603,km:"Aire de repos",note:null,equip:{}},
+{id:1469,nom:"Aire sans nom",lat:46.77089,lng:6.62889,km:"Aire de repos",note:null,equip:{}},
+{id:1470,nom:"Schild-Hütte",lat:46.77768,lng:8.18026,km:"Aire de repos",note:null,equip:{}},
+{id:1471,nom:"Aire sans nom",lat:46.79508,lng:1.98255,km:"Aire de repos",note:null,equip:{}},
+{id:1472,nom:"Aire sans nom",lat:46.81002,lng:3.1271,km:"Aire de repos",note:null,equip:{}},
+{id:1473,nom:"Aire sans nom",lat:46.8188,lng:7.42974,km:"Aire de repos",note:null,equip:{}},
+{id:1474,nom:"Aire sans nom",lat:46.83374,lng:3.16827,km:"Aire de repos",note:null,equip:{}},
+{id:1475,nom:"Aire sans nom",lat:46.82709,lng:7.30097,km:"Aire de repos",note:null,equip:{}},
+{id:1476,nom:"Aire sans nom",lat:46.8352,lng:-0.41553,km:"Aire de repos",note:null,equip:{}},
+{id:1477,nom:"Aire sans nom",lat:46.84564,lng:0.00902,km:"Aire de repos",note:null,equip:{}},
+{id:1478,nom:"Aire sans nom",lat:46.86804,lng:7.48133,km:"Aire de repos",note:null,equip:{}},
+{id:1479,nom:"Aire sans nom",lat:46.9071,lng:-0.99831,km:"Aire de repos",note:null,equip:{}},
+{id:1480,nom:"Aire sans nom",lat:46.93329,lng:-0.98916,km:"Aire de repos",note:null,equip:{}},
+{id:1481,nom:"Aire sans nom",lat:46.93764,lng:-0.98346,km:"Aire de repos",note:null,equip:{}},
+{id:1482,nom:"Aire sans nom",lat:46.9516,lng:-0.86176,km:"Aire de repos",note:null,equip:{}},
+{id:1483,nom:"Aire sans nom",lat:46.9451,lng:4.72995,km:"Aire de repos",note:null,equip:{}},
+{id:1484,nom:"Aire sans nom",lat:46.9602,lng:-0.45342,km:"Aire de repos",note:null,equip:{}},
+{id:1485,nom:"Aire sans nom",lat:46.95561,lng:4.67073,km:"Aire de repos",note:null,equip:{}},
+{id:1486,nom:"Aire sans nom",lat:46.95835,lng:5.88631,km:"Aire de repos",note:null,equip:{}},
+{id:1487,nom:"Aire sans nom",lat:46.97171,lng:4.52027,km:"Aire de repos",note:null,equip:{}},
+{id:1488,nom:"Aire sans nom",lat:46.97446,lng:4.67438,km:"Aire de repos",note:null,equip:{}},
+{id:1489,nom:"Aire sans nom",lat:46.97148,lng:8.11323,km:"Aire de repos",note:null,equip:{}},
+{id:1490,nom:"Aire sans nom",lat:46.98967,lng:4.77162,km:"Aire de repos",note:null,equip:{}},
+{id:1491,nom:"Aire sans nom",lat:46.9908,lng:5.06485,km:"Aire de repos",note:null,equip:{}},
+{id:1492,nom:"Aire sans nom",lat:47.00379,lng:5.50533,km:"Aire de repos",note:null,equip:{}},
+{id:1493,nom:"Aire sans nom",lat:47.0059,lng:5.50116,km:"Aire de repos",note:null,equip:{}},
+{id:1494,nom:"Aire sans nom",lat:47.03077,lng:-0.79506,km:"Aire de repos",note:null,equip:{}},
+{id:1495,nom:"Aire sans nom",lat:47.02546,lng:4.64561,km:"Aire de repos",note:null,equip:{}},
+{id:1496,nom:"Aire sans nom",lat:47.04079,lng:-0.81954,km:"Aire de repos",note:null,equip:{}},
+{id:1497,nom:"Aire sans nom",lat:47.03922,lng:5.4492,km:"Aire de repos",note:null,equip:{}},
+{id:1498,nom:"Aire sans nom",lat:47.05093,lng:-1.06102,km:"Aire de repos",note:null,equip:{}},
+{id:1499,nom:"Aire sans nom",lat:47.05272,lng:1.0902,km:"Aire de repos",note:null,equip:{}},
+{id:1500,nom:"Aire sans nom",lat:47.05628,lng:3.81337,km:"Aire de repos",note:null,equip:{}},
+{id:1501,nom:"Aire sans nom",lat:47.05776,lng:3.81227,km:"Aire de repos",note:null,equip:{}},
+{id:1502,nom:"Aire sans nom",lat:47.06369,lng:3.83315,km:"Aire de repos",note:null,equip:{}},
+{id:1503,nom:"Aire sans nom",lat:47.06349,lng:3.82972,km:"Aire de repos",note:null,equip:{}},
+{id:1504,nom:"Aire de Savigny-lès-Beaune",lat:47.05627,lng:4.82854,km:"Aire de repos",note:null,equip:{}},
+{id:1505,nom:"Aire sans nom",lat:47.07655,lng:4.84984,km:"Aire de repos",note:null,equip:{}},
+{id:1506,nom:"Aire sans nom",lat:47.10671,lng:-1.98203,km:"Aire de repos",note:null,equip:{}},
+{id:1507,nom:"Aire sans nom",lat:47.12095,lng:-1.58482,km:"Aire de repos",note:null,equip:{}},
+{id:1508,nom:"Aire sans nom",lat:47.13257,lng:1.68948,km:"Aire de repos",note:null,equip:{}},
+{id:1509,nom:"Aire sans nom",lat:47.13518,lng:-1.65302,km:"Aire de repos",note:null,equip:{}},
+{id:1510,nom:"Aire sans nom",lat:47.14783,lng:-2.15307,km:"Aire de repos",note:null,equip:{}},
+{id:1511,nom:"Aire de Vallet",lat:47.15563,lng:-1.31272,km:"Aire de repos",note:null,equip:{}},
+{id:1512,nom:"Aire sans nom",lat:47.15987,lng:4.4367,km:"Aire de repos",note:null,equip:{}},
+{id:1513,nom:"Aire de la Garenne",lat:47.15541,lng:4.69781,km:"Aire de repos",note:null,equip:{}},
+{id:1514,nom:"Aire sans nom",lat:47.17012,lng:4.43171,km:"Aire de repos",note:null,equip:{}},
+{id:1515,nom:"Aire sans nom",lat:47.16825,lng:7.67557,km:"Aire de repos",note:null,equip:{}},
+{id:1516,nom:"Aire sans nom",lat:47.20195,lng:7.72837,km:"Aire de repos",note:null,equip:{}},
+{id:1517,nom:"Aire sans nom",lat:47.20731,lng:-1.78513,km:"Aire de repos",note:null,equip:{}},
+{id:1518,nom:"Aire sans nom",lat:47.21497,lng:-0.11526,km:"Aire de repos",note:null,equip:{}},
+{id:1519,nom:"Aire sans nom",lat:47.25073,lng:-0.73115,km:"Aire de repos",note:null,equip:{}},
+{id:1520,nom:"Aire sans nom",lat:47.2501,lng:-0.01746,km:"Aire de repos",note:null,equip:{}},
+{id:1521,nom:"Aire de Liernais",lat:47.2468,lng:4.28288,km:"Aire de repos",note:null,equip:{}},
+{id:1522,nom:"Aire sans nom",lat:47.24809,lng:5.19943,km:"Aire de repos",note:null,equip:{}},
+{id:1523,nom:"Aire sans nom",lat:47.26144,lng:-1.98067,km:"Aire de repos",note:null,equip:{}},
+{id:1524,nom:"Aire sans nom",lat:47.26936,lng:7.11349,km:"Aire de repos",note:null,equip:{}},
+{id:1525,nom:"Aire sans nom",lat:47.27643,lng:3.7161,km:"Aire de repos",note:null,equip:{}},
+{id:1526,nom:"Aire sans nom",lat:47.28998,lng:0.171,km:"Aire de repos",note:null,equip:{}},
+{id:1527,nom:"Aire sans nom",lat:47.3041,lng:4.6601,km:"Aire de repos",note:null,equip:{}},
+{id:1528,nom:"Aire sans nom",lat:47.30312,lng:4.96727,km:"Aire de repos",note:null,equip:{}},
+{id:1529,nom:"Aire sans nom",lat:47.3098,lng:-0.13971,km:"Aire de repos",note:null,equip:{}},
+{id:1530,nom:"Aire sans nom",lat:47.31419,lng:0.71163,km:"Aire de repos",note:null,equip:{}},
+{id:1531,nom:"Aire sans nom",lat:47.31491,lng:4.60527,km:"Aire de repos",note:null,equip:{}},
+{id:1532,nom:"Aire sans nom",lat:47.30904,lng:4.62762,km:"Aire de repos",note:null,equip:{}},
+{id:1533,nom:"Aire sans nom",lat:47.30624,lng:4.65177,km:"Aire de repos",note:null,equip:{}},
+{id:1534,nom:"Aire sans nom",lat:47.31619,lng:7.94555,km:"Aire de repos",note:null,equip:{}},
+{id:1535,nom:"Aire sans nom",lat:47.31604,lng:8.05734,km:"Aire de repos",note:null,equip:{}},
+{id:1536,nom:"Aire sans nom",lat:47.33451,lng:-1.3256,km:"Aire de repos",note:null,equip:{}},
+{id:1537,nom:"Aire sans nom",lat:47.33404,lng:-0.44091,km:"Aire de repos",note:null,equip:{}},
+{id:1538,nom:"Aire sans nom",lat:47.32504,lng:5.17015,km:"Aire de repos",note:null,equip:{}},
+{id:1539,nom:"Aire sans nom",lat:47.33645,lng:7.76049,km:"Aire de repos",note:null,equip:{}},
+{id:1540,nom:"Aire sans nom",lat:47.35045,lng:-0.77319,km:"Aire de repos",note:null,equip:{}},
+{id:1541,nom:"Aire sans nom",lat:47.35205,lng:4.57445,km:"Aire de repos",note:null,equip:{}},
+{id:1542,nom:"Aire sans nom",lat:47.36328,lng:4.56775,km:"Aire de repos",note:null,equip:{}},
+{id:1543,nom:"Aire sans nom",lat:47.3591,lng:7.76105,km:"Aire de repos",note:null,equip:{}},
+{id:1544,nom:"Aire sans nom",lat:47.36903,lng:5.2302,km:"Aire de repos",note:null,equip:{}},
+{id:1545,nom:"Aire sans nom",lat:47.38996,lng:4.54887,km:"Aire de repos",note:null,equip:{}},
+{id:1546,nom:"Pompas",lat:47.40279,lng:-2.3571,km:"Aire de repos",note:null,equip:{}},
+{id:1547,nom:"Aire sans nom",lat:47.41519,lng:0.9735,km:"Aire de repos",note:null,equip:{}},
+{id:1548,nom:"Aire sans nom",lat:47.44304,lng:4.08329,km:"Aire de repos",note:null,equip:{}},
+{id:1549,nom:"Aire sans nom",lat:47.44238,lng:4.08451,km:"Aire de repos",note:null,equip:{}},
+{id:1550,nom:"Aire sans nom",lat:47.44185,lng:4.31189,km:"Aire de repos",note:null,equip:{}},
+{id:1551,nom:"Aire d'Écot",lat:47.44136,lng:6.72969,km:"Aire de services",note:null,equip:{}},
+{id:1552,nom:"Aire sans nom",lat:47.44275,lng:6.72849,km:"Aire de repos",note:null,equip:{}},
+{id:1553,nom:"Aire sans nom",lat:47.45124,lng:3.6379,km:"Aire de repos",note:null,equip:{}},
+{id:1554,nom:"Aire de repos du Morimont",lat:47.45091,lng:7.21343,km:"Aire de repos",note:null,equip:{}},
+{id:1555,nom:"Aire sans nom",lat:47.45741,lng:-1.79161,km:"Aire de repos",note:null,equip:{}},
+{id:1556,nom:"Aire sans nom",lat:47.46435,lng:1.08688,km:"Aire de repos",note:null,equip:{}},
+{id:1557,nom:"Aire de Cussy les Forges",lat:47.46223,lng:4.04756,km:"Aire de repos",note:null,equip:{}},
+{id:1558,nom:"Aire de Cussy les Forges",lat:47.46175,lng:4.04977,km:"Aire de repos",note:null,equip:{}},
+{id:1559,nom:"Aire sans nom",lat:47.46108,lng:7.53049,km:"Aire de repos",note:null,equip:{}},
+{id:1560,nom:"Aire sans nom",lat:47.46043,lng:7.5543,km:"Aire de repos",note:null,equip:{}},
+{id:1561,nom:"Aire sans nom",lat:47.48421,lng:8.00546,km:"Aire de repos",note:null,equip:{}},
+{id:1562,nom:"Aire sans nom",lat:47.50233,lng:-1.71377,km:"Aire de repos",note:null,equip:{}},
+{id:1563,nom:"Aire sans nom",lat:47.50313,lng:-1.71253,km:"Aire de repos",note:null,equip:{}},
+{id:1564,nom:"Aire sans nom",lat:47.50854,lng:5.16986,km:"Aire de repos",note:null,equip:{}},
+{id:1565,nom:"Aire sans nom",lat:47.51488,lng:6.66731,km:"Aire de repos",note:null,equip:{}},
+{id:1566,nom:"Aire sans nom",lat:47.50545,lng:7.00677,km:"Aire de repos",note:null,equip:{}},
+{id:1567,nom:"Aire sans nom",lat:47.50825,lng:8.00236,km:"Aire de repos",note:null,equip:{}},
+{id:1568,nom:"Aire sans nom",lat:47.51183,lng:8.07809,km:"Aire de repos",note:null,equip:{}},
+{id:1569,nom:"Aire sans nom",lat:47.51539,lng:6.84454,km:"Aire de repos",note:null,equip:{}},
+{id:1570,nom:"Aire sans nom",lat:47.53997,lng:4.43939,km:"Aire de repos",note:null,equip:{}},
+{id:1571,nom:"Aire sans nom",lat:47.53629,lng:4.83478,km:"Aire de repos",note:null,equip:{}},
+{id:1572,nom:"Aire d'Echenoz (-le-Sec)",lat:47.53842,lng:6.13419,km:"Aire de repos",note:null,equip:{}},
+{id:1573,nom:"Aire sans nom",lat:47.53673,lng:8.00084,km:"Aire de repos",note:null,equip:{}},
+{id:1574,nom:"Aire sans nom",lat:47.55238,lng:0.56756,km:"Aire de repos",note:null,equip:{}},
+{id:1575,nom:"Aire de Voutenay",lat:47.55403,lng:3.79824,km:"Aire de repos",note:null,equip:{}},
+{id:1576,nom:"Aire de Voutenay",lat:47.5537,lng:3.79728,km:"Aire de repos",note:null,equip:{}},
+{id:1577,nom:"Aire sans nom",lat:47.55492,lng:7.88063,km:"Aire de repos",note:null,equip:{}},
+{id:1578,nom:"Aire sans nom",lat:47.54542,lng:7.99699,km:"Aire de repos",note:null,equip:{}},
+{id:1579,nom:"Aire sans nom",lat:47.57046,lng:3.78186,km:"Aire de repos",note:null,equip:{}},
+{id:1580,nom:"Aire sans nom",lat:47.58153,lng:3.51933,km:"Aire de repos",note:null,equip:{}},
+{id:1581,nom:"Aire sans nom",lat:47.58522,lng:3.51483,km:"Aire de repos",note:null,equip:{}},
+{id:1582,nom:"Aire sans nom",lat:47.59702,lng:2.96351,km:"Aire de repos",note:null,equip:{}},
+{id:1583,nom:"Garage Dilber",lat:47.6011,lng:7.51166,km:"Aire de services",note:null,equip:{}},
+{id:1584,nom:"Aire de Repos de Courson les Carrieres",lat:47.60877,lng:3.50114,km:"Aire de repos",note:null,equip:{}},
+{id:1585,nom:"Aire sans nom",lat:47.6176,lng:-0.71728,km:"Aire de repos",note:null,equip:{}},
+{id:1586,nom:"Aire sans nom",lat:47.62129,lng:2.75923,km:"Aire de repos",note:null,equip:{}},
+{id:1587,nom:"Aire de Repos de Courson les Carrieres",lat:47.62188,lng:3.49593,km:"Aire de repos",note:null,equip:{}},
+{id:1588,nom:"Aire sans nom",lat:47.62449,lng:3.86325,km:"Aire de repos",note:null,equip:{}},
+{id:1589,nom:"Aire sans nom",lat:47.62295,lng:8.1931,km:"Aire de repos",note:null,equip:{}},
+{id:1590,nom:"Aire sans nom",lat:47.63763,lng:3.743,km:"Aire de repos",note:null,equip:{}},
+{id:1591,nom:"Aire sans nom",lat:47.65358,lng:3.49883,km:"Aire de repos",note:null,equip:{}},
+{id:1592,nom:"Aire sans nom",lat:47.65448,lng:3.4968,km:"Aire de repos",note:null,equip:{}},
+{id:1593,nom:"Aire sans nom",lat:47.65095,lng:6.76116,km:"Aire de repos",note:null,equip:{}},
+{id:1594,nom:"Aire sans nom",lat:47.65164,lng:6.76065,km:"Aire de repos",note:null,equip:{}},
+{id:1595,nom:"Aire sans nom",lat:47.66012,lng:3.50197,km:"Aire de repos",note:null,equip:{}},
+{id:1596,nom:"Aire sans nom",lat:47.66007,lng:3.87724,km:"Aire de repos",note:null,equip:{}},
+{id:1597,nom:"Aire sans nom",lat:47.66537,lng:3.70358,km:"Aire de repos",note:null,equip:{}},
+{id:1598,nom:"Aire sans nom",lat:47.68445,lng:4.97316,km:"Aire de repos",note:null,equip:{}},
+{id:1599,nom:"Aire sans nom",lat:47.69169,lng:3.53641,km:"Aire de repos",note:null,equip:{}},
+{id:1600,nom:"Aire sans nom",lat:47.68734,lng:3.6598,km:"Aire de repos",note:null,equip:{}},
+{id:1601,nom:"Aire sans nom",lat:47.68623,lng:4.22991,km:"Aire de repos",note:null,equip:{}},
+{id:1602,nom:"Aire des Bois",lat:47.68801,lng:5.99953,km:"Aire de repos",note:null,equip:{}},
+{id:1603,nom:"Aire sans nom",lat:47.70274,lng:-2.95532,km:"Aire de repos",note:null,equip:{}},
+{id:1604,nom:"Aire sans nom",lat:47.69661,lng:-2.51131,km:"Aire de repos",note:null,equip:{}},
+{id:1605,nom:"Aire sans nom",lat:47.7024,lng:0.19317,km:"Aire de repos",note:null,equip:{}},
+{id:1606,nom:"Aire sans nom",lat:47.70238,lng:3.53548,km:"Aire de repos",note:null,equip:{}},
+{id:1607,nom:"Aire sans nom",lat:47.74288,lng:0.59236,km:"Aire de repos",note:null,equip:{}},
+{id:1608,nom:"Aire sans nom",lat:47.73841,lng:3.2962,km:"Aire de services",note:null,equip:{}},
+{id:1609,nom:"Aire de Cintrey",lat:47.74337,lng:5.77412,km:"Aire de repos",note:null,equip:{}},
+{id:1610,nom:"Aire sans nom",lat:47.75101,lng:0.5524,km:"Aire de repos",note:null,equip:{}},
+{id:1611,nom:"Aire sans nom",lat:47.7506,lng:5.76637,km:"Aire de repos",note:null,equip:{}},
+{id:1612,nom:"Aire sans nom",lat:47.76018,lng:6.19725,km:"Aire de repos",note:null,equip:{}},
+{id:1613,nom:"Aire sans nom",lat:47.7554,lng:8.18163,km:"Aire de repos",note:null,equip:{}},
+{id:1614,nom:"Aire sans nom",lat:47.76597,lng:3.55066,km:"Aire de repos",note:null,equip:{}},
+{id:1615,nom:"Aire sans nom",lat:47.78235,lng:8.18241,km:"Aire de repos",note:null,equip:{}},
+{id:1616,nom:"Aire sans nom",lat:47.77587,lng:8.18177,km:"Aire de repos",note:null,equip:{}},
+{id:1617,nom:"Aire sans nom",lat:47.78686,lng:2.73505,km:"Aire de repos",note:null,equip:{}},
+{id:1618,nom:"Aire sans nom",lat:47.80169,lng:0.52819,km:"Aire de repos",note:null,equip:{}},
+{id:1619,nom:"Aire d'Auxerre Venoy",lat:47.80631,lng:3.5958,km:"Aire de repos",note:null,equip:{}},
+{id:1620,nom:"Aire d'Auxerre Venoy",lat:47.80563,lng:3.59622,km:"Aire de repos",note:null,equip:{}},
+{id:1621,nom:"Aire sans nom",lat:47.81062,lng:8.07722,km:"Aire de repos",note:null,equip:{}},
+{id:1622,nom:"Aire sans nom",lat:47.8221,lng:3.7841,km:"Aire de repos",note:null,equip:{}},
+{id:1623,nom:"Aire de Chaudenay",lat:47.81879,lng:5.485,km:"Aire de repos",note:null,equip:{}},
+{id:1624,nom:"Aire sans nom",lat:47.82381,lng:6.38814,km:"Aire de repos",note:null,equip:{}},
+{id:1625,nom:"Aire sans nom",lat:47.82531,lng:4.54083,km:"Aire de repos",note:null,equip:{}},
+{id:1626,nom:"Aire sans nom",lat:47.84063,lng:3.60448,km:"Aire de repos",note:null,equip:{}},
+{id:1627,nom:"Aire sans nom",lat:47.84332,lng:3.77759,km:"Aire de repos",note:null,equip:{}},
+{id:1628,nom:"Aire sans nom",lat:47.84104,lng:3.95192,km:"Aire de repos",note:null,equip:{}},
+{id:1629,nom:"Aire sans nom",lat:47.84405,lng:3.96469,km:"Aire de repos",note:null,equip:{}},
+{id:1630,nom:"Aire sans nom",lat:47.84916,lng:-4.28836,km:"Aire de repos",note:null,equip:{}},
+{id:1631,nom:"Aire sans nom",lat:47.85488,lng:-4.21101,km:"Aire de repos",note:null,equip:{}},
+{id:1632,nom:"Aire sans nom",lat:47.84646,lng:3.62106,km:"Aire de repos",note:null,equip:{}},
+{id:1633,nom:"Aire sans nom",lat:47.85092,lng:4.11329,km:"Aire de repos",note:null,equip:{}},
+{id:1634,nom:"Stein Art",lat:47.85303,lng:8.05374,km:"Aire de repos",note:null,equip:{}},
+{id:1635,nom:"Ty Mamgouz",lat:47.86099,lng:-3.98616,km:"Aire de services",note:null,equip:{}},
+{id:1636,nom:"Aire de remisage RATP Dev",lat:47.86111,lng:-3.53169,km:"Aire de services",note:null,equip:{}},
+{id:1637,nom:"Aire sans nom",lat:47.86128,lng:8.17202,km:"Aire de repos",note:null,equip:{}},
+{id:1638,nom:"Aire sans nom",lat:47.87032,lng:3.53474,km:"Aire de repos",note:null,equip:{}},
+{id:1639,nom:"Aire sans nom",lat:47.87722,lng:3.69772,km:"Aire de repos",note:null,equip:{}},
+{id:1640,nom:"Aire sans nom",lat:47.88497,lng:5.3185,km:"Aire de repos",note:null,equip:{}},
+{id:1641,nom:"Aire sans nom",lat:47.8805,lng:6.9454,km:"Aire de repos",note:null,equip:{}},
+{id:1642,nom:"Aire sans nom",lat:47.89292,lng:4.01086,km:"Aire de repos",note:null,equip:{}},
+{id:1643,nom:"Aire sans nom",lat:47.89969,lng:3.52119,km:"Aire de repos",note:null,equip:{}},
+{id:1644,nom:"Aire sans nom",lat:47.89722,lng:3.71205,km:"Aire de repos",note:null,equip:{}},
+{id:1645,nom:"Aire sans nom",lat:47.91359,lng:5.28998,km:"Aire de repos",note:null,equip:{}},
+{id:1646,nom:"Aire sans nom",lat:47.91204,lng:6.40776,km:"Aire de repos",note:null,equip:{}},
+{id:1647,nom:"Aire sans nom",lat:47.91857,lng:3.93431,km:"Aire de repos",note:null,equip:{}},
+{id:1648,nom:"Aire de Montcourt",lat:47.92264,lng:5.95832,km:"Aire de repos",note:null,equip:{}},
+{id:1649,nom:"Aire sans nom",lat:47.92212,lng:6.00779,km:"Aire de repos",note:null,equip:{}},
+{id:1650,nom:"Aire de repos de Manério",lat:47.92656,lng:-3.35582,km:"Aire de repos",note:null,equip:{}},
+{id:1651,nom:"Aire sans nom",lat:47.95336,lng:3.30774,km:"Aire de repos",note:null,equip:{}},
+{id:1652,nom:"Aire sans nom",lat:47.95391,lng:3.45687,km:"Aire de repos",note:null,equip:{}},
+{id:1653,nom:"Aire de Bousseraucourt",lat:47.95087,lng:5.92294,km:"Aire de repos",note:null,equip:{}},
+{id:1654,nom:"Aire sans nom",lat:47.95578,lng:3.45242,km:"Aire de repos",note:null,equip:{}},
+{id:1655,nom:"Aire du Champ à la Croix",lat:47.96002,lng:5.15264,km:"Aire de repos",note:null,equip:{}},
+{id:1656,nom:"Aire sans nom",lat:47.96183,lng:6.80138,km:"Aire de repos",note:null,equip:{}},
+{id:1657,nom:"Aire sans nom",lat:47.96562,lng:0.58222,km:"Aire de repos",note:null,equip:{}},
+{id:1658,nom:"Aire sans nom",lat:47.96972,lng:3.41432,km:"Aire de repos",note:null,equip:{}},
+{id:1659,nom:"Aire sans nom",lat:47.96967,lng:3.80665,km:"Aire de repos",note:null,equip:{}},
+{id:1660,nom:"Aire sans nom",lat:47.96662,lng:5.14522,km:"Aire de repos",note:null,equip:{}},
+{id:1661,nom:"Aire de repos de la Bourguignotte",lat:47.98334,lng:6.27573,km:"Aire de repos",note:null,equip:{}},
+{id:1662,nom:"Aire sans nom",lat:47.98649,lng:3.73332,km:"Aire de repos",note:null,equip:{}},
+{id:1663,nom:"Aire sans nom",lat:48.00933,lng:3.74909,km:"Aire de repos",note:null,equip:{}},
+{id:1664,nom:"Aire sans nom",lat:48.00934,lng:6.71559,km:"Aire de repos",note:null,equip:{}},
+{id:1665,nom:"Aire sans nom",lat:48.00949,lng:7.5297,km:"Aire de repos",note:null,equip:{}},
+{id:1666,nom:"Aire sans nom",lat:48.0212,lng:8.08025,km:"Aire de repos",note:null,equip:{}},
+{id:1667,nom:"Aire sans nom",lat:48.03296,lng:3.3241,km:"Aire de repos",note:null,equip:{}},
+{id:1668,nom:"Aire sans nom",lat:48.03331,lng:3.7749,km:"Aire de repos",note:null,equip:{}},
+{id:1669,nom:"Aire sans nom",lat:48.03766,lng:-4.71812,km:"Aire de repos",note:null,equip:{}},
+{id:1670,nom:"Hamacs",lat:48.0435,lng:-1.77317,km:"Aire de repos",note:null,equip:{}},
+{id:1671,nom:"Aire sans nom",lat:48.03529,lng:6.41495,km:"Aire de repos",note:null,equip:{}},
+{id:1672,nom:"Aire sans nom",lat:48.04604,lng:-2.40483,km:"Aire de repos",note:null,equip:{}},
+{id:1673,nom:"Aire sans nom",lat:48.05329,lng:3.79944,km:"Aire de repos",note:null,equip:{}},
+{id:1674,nom:"Aire sans nom",lat:48.04803,lng:7.1848,km:"Aire de repos",note:null,equip:{}},
+{id:1675,nom:"Aire sans nom",lat:48.06039,lng:6.5657,km:"Aire de repos",note:null,equip:{}},
+{id:1676,nom:"Aire sans nom",lat:48.07865,lng:-2.95224,km:"Aire de repos",note:null,equip:{}},
+{id:1677,nom:"Aire du Loiret",lat:48.08408,lng:2.47129,km:"Aire de repos",note:null,equip:{}},
+{id:1678,nom:"Aire sans nom",lat:48.08039,lng:7.37452,km:"Aire de repos",note:null,equip:{}},
+{id:1679,nom:"Aire sans nom",lat:48.09908,lng:3.28973,km:"Aire de repos",note:null,equip:{}},
+{id:1680,nom:"Aire sans nom",lat:48.1059,lng:6.90715,km:"Aire de repos",note:null,equip:{}},
+{id:1681,nom:"Aire sans nom",lat:48.11308,lng:6.91109,km:"Aire de repos",note:null,equip:{}},
+{id:1682,nom:"Aire sans nom",lat:48.12115,lng:2.7655,km:"Aire de repos",note:null,equip:{}},
+{id:1683,nom:"Aire sans nom",lat:48.11784,lng:6.26709,km:"Aire de repos",note:null,equip:{}},
+{id:1684,nom:"Aire sans nom",lat:48.12652,lng:2.76385,km:"Aire de repos",note:null,equip:{}},
+{id:1685,nom:"Aire sans nom",lat:48.13907,lng:3.30244,km:"Aire de repos",note:null,equip:{}},
+{id:1686,nom:"Aire sans nom",lat:48.14437,lng:6.91784,km:"Aire de repos",note:null,equip:{}},
+{id:1687,nom:"Aire sans nom",lat:48.13657,lng:7.28209,km:"Aire de repos",note:null,equip:{}},
+{id:1688,nom:"Aire sans nom",lat:48.1433,lng:7.7232,km:"Aire de repos",note:null,equip:{}},
+{id:1689,nom:"Aire sans nom",lat:48.13986,lng:7.90348,km:"Aire de repos",note:null,equip:{}},
+{id:1690,nom:"Aire sans nom",lat:48.14602,lng:-0.05652,km:"Aire de repos",note:null,equip:{}},
+{id:1691,nom:"Aire sans nom",lat:48.14657,lng:-0.05778,km:"Aire de repos",note:null,equip:{}},
+{id:1692,nom:"Aire sans nom",lat:48.16373,lng:3.30088,km:"Aire de repos",note:null,equip:{}},
+{id:1693,nom:"Aire sans nom",lat:48.16356,lng:6.46832,km:"Aire de repos",note:null,equip:{}},
+{id:1694,nom:"Aire sans nom",lat:48.15993,lng:6.91986,km:"Aire de repos",note:null,equip:{}},
+{id:1695,nom:"Aire sans nom",lat:48.15885,lng:6.92071,km:"Aire de repos",note:null,equip:{}},
+{id:1696,nom:"Aire sans nom",lat:48.17205,lng:2.73627,km:"Aire de repos",note:null,equip:{}},
+{id:1697,nom:"Aire sans nom",lat:48.17535,lng:3.4057,km:"Aire de repos",note:null,equip:{}},
+{id:1698,nom:"Aire sans nom",lat:48.17558,lng:3.40843,km:"Aire de repos",note:null,equip:{}},
+{id:1699,nom:"Aire sans nom",lat:48.1948,lng:3.20919,km:"Aire de services",note:null,equip:{}},
+{id:1700,nom:"Aire sans nom",lat:48.19429,lng:3.45423,km:"Aire de repos",note:null,equip:{}},
+{id:1701,nom:"Aire de Chigy",lat:48.20385,lng:3.4697,km:"Aire de repos",note:null,equip:{}},
+{id:1702,nom:"Aire sans nom",lat:48.20252,lng:8.11878,km:"Aire de repos",note:null,equip:{}},
+{id:1703,nom:"Aire sans nom",lat:48.21029,lng:3.47849,km:"Aire de repos",note:null,equip:{}},
+{id:1704,nom:"Aire sans nom",lat:48.21264,lng:3.4818,km:"Aire de repos",note:null,equip:{}},
+{id:1705,nom:"Aire sans nom",lat:48.21871,lng:7.27158,km:"Aire de repos",note:null,equip:{}},
+{id:1706,nom:"Aire sans nom",lat:48.22898,lng:3.51632,km:"Aire de repos",note:null,equip:{}},
+{id:1707,nom:"Aire de Repos des Chevries",lat:48.24425,lng:-0.64277,km:"Aire de repos",note:null,equip:{}},
+{id:1708,nom:"Aire sans nom",lat:48.23503,lng:5.75632,km:"Aire de repos",note:null,equip:{}},
+{id:1709,nom:"Aire sans nom",lat:48.24739,lng:-4.40278,km:"Aire de repos",note:null,equip:{}},
+{id:1710,nom:"Aire sans nom",lat:48.26393,lng:-3.60523,km:"Aire de repos",note:null,equip:{}},
+{id:1711,nom:"Aire sans nom",lat:48.25925,lng:-0.90834,km:"Aire de repos",note:null,equip:{}},
+{id:1712,nom:"Aire sans nom",lat:48.26174,lng:3.2372,km:"Aire de repos",note:null,equip:{}},
+{id:1713,nom:"Aux Bons Soins",lat:48.26271,lng:7.44113,km:"Aire de services",note:null,equip:{}},
+{id:1714,nom:"Aire sans nom",lat:48.26619,lng:3.76383,km:"Aire de repos",note:null,equip:{}},
+{id:1715,nom:"Aire sans nom",lat:48.26816,lng:4.21324,km:"Aire de repos",note:null,equip:{}},
+{id:1716,nom:"Aire sans nom",lat:48.26647,lng:4.21699,km:"Aire de repos",note:null,equip:{}},
+{id:1717,nom:"Aire sans nom",lat:48.28662,lng:-4.12449,km:"Aire de repos",note:null,equip:{}},
+{id:1718,nom:"Aire sans nom",lat:48.28966,lng:2.68138,km:"Aire de repos",note:null,equip:{}},
+{id:1719,nom:"Aire sans nom",lat:48.3035,lng:6.07758,km:"Aire de repos",note:null,equip:{}},
+{id:1720,nom:"Aire sans nom",lat:48.33143,lng:5.75511,km:"Aire de repos",note:null,equip:{}},
+{id:1721,nom:"Aire sans nom",lat:48.33038,lng:6.13491,km:"Aire de repos",note:null,equip:{}},
+{id:1722,nom:"Aire sans nom",lat:48.33277,lng:7.19535,km:"Aire de repos",note:null,equip:{}},
+{id:1723,nom:"Aire sans nom",lat:48.32554,lng:7.71977,km:"Aire de repos",note:null,equip:{}},
+{id:1724,nom:"Aire sans nom",lat:48.34075,lng:6.11642,km:"Aire de repos",note:null,equip:{}},
+{id:1725,nom:"Aire des Cheminées",lat:48.3522,lng:-0.4971,km:"Aire de repos",note:null,equip:{}},
+{id:1726,nom:"Aire sans nom",lat:48.35276,lng:5.71707,km:"Aire de repos",note:null,equip:{}},
+{id:1727,nom:"La Croix Feue Reine",lat:48.3626,lng:0.54999,km:"Aire de repos",note:null,equip:{}},
+{id:1728,nom:"Aire sans nom",lat:48.35588,lng:2.69476,km:"Aire de repos",note:null,equip:{}},
+{id:1729,nom:"Aire sans nom",lat:48.38478,lng:2.68816,km:"Aire de repos",note:null,equip:{}},
+{id:1730,nom:"Prise électrique gratuite",lat:48.38686,lng:-0.5854,km:"Aire de repos",note:null,equip:{}},
+{id:1731,nom:"Aire sans nom",lat:48.38827,lng:0.55426,km:"Aire de repos",note:null,equip:{}},
+{id:1732,nom:"Aire sans nom",lat:48.38978,lng:0.55516,km:"Aire de repos",note:null,equip:{}},
+{id:1733,nom:"Aire sans nom",lat:48.38862,lng:2.68947,km:"Aire de repos",note:null,equip:{}},
+{id:1734,nom:"Aire sans nom",lat:48.40535,lng:-1.00211,km:"Aire de repos",note:null,equip:{}},
+{id:1735,nom:"Aire sans nom",lat:48.42208,lng:6.58232,km:"Aire de repos",note:null,equip:{}},
+{id:1736,nom:"Aire sans nom",lat:48.42439,lng:7.88463,km:"Aire de repos",note:null,equip:{}},
+{id:1737,nom:"Aire sans nom",lat:48.42945,lng:-0.49198,km:"Aire de repos",note:null,equip:{}},
+{id:1738,nom:"Aire de Fleury-en-Bière",lat:48.42741,lng:2.54028,km:"Aire de repos",note:null,equip:{}},
+{id:1739,nom:"Aire sans nom",lat:48.42744,lng:2.66436,km:"Aire de repos",note:null,equip:{}},
+{id:1740,nom:"Aire sans nom",lat:48.4286,lng:4.67273,km:"Aire de repos",note:null,equip:{}},
+{id:1741,nom:"Aire sans nom",lat:48.44082,lng:-1.01847,km:"Aire de repos",note:null,equip:{}},
+{id:1742,nom:"La Croix des Chênes",lat:48.43545,lng:0.88579,km:"Aire de repos",note:null,equip:{}},
+{id:1743,nom:"Aire sans nom",lat:48.4428,lng:2.61291,km:"Aire de repos",note:null,equip:{}},
+{id:1744,nom:"Aire sans nom",lat:48.44484,lng:7.19385,km:"Aire de repos",note:null,equip:{}},
+{id:1745,nom:"Aire sans nom",lat:48.45478,lng:5.16743,km:"Aire de repos",note:null,equip:{}},
+{id:1746,nom:"Aire de Pont Preuig",lat:48.45981,lng:-3.19328,km:"Aire de repos",note:null,equip:{}},
+{id:1747,nom:"Aire sans nom",lat:48.46361,lng:1.45716,km:"Aire de repos",note:null,equip:{}},
+{id:1748,nom:"Aire de Porzh Chevance",lat:48.46537,lng:-3.09833,km:"Aire de repos",note:null,equip:{}},
+{id:1749,nom:"Aire sans nom",lat:48.5432,lng:7.62442,km:"Aire de services",note:null,equip:{}},
+{id:1750,nom:"Aire sans nom",lat:48.56485,lng:-0.12641,km:"Aire de repos",note:null,equip:{}},
+{id:1751,nom:"Aire sans nom",lat:48.57377,lng:-0.15964,km:"Aire de repos",note:null,equip:{}},
+{id:1752,nom:"Aire sans nom",lat:48.57262,lng:-0.09765,km:"Aire de repos",note:null,equip:{}},
+{id:1753,nom:"Aire sans nom",lat:48.57875,lng:-0.16969,km:"Aire de repos",note:null,equip:{}},
+{id:1754,nom:"Aire sans nom",lat:48.57782,lng:6.09215,km:"Aire de repos",note:null,equip:{}},
+{id:1755,nom:"Aire sans nom",lat:48.59075,lng:0.16871,km:"Aire de repos",note:null,equip:{}},
+{id:1756,nom:"Aleigne",lat:48.58776,lng:2.25122,km:"Aire de services",note:null,equip:{}},
+{id:1757,nom:"Aire sans nom",lat:48.58746,lng:3.82729,km:"Aire de repos",note:null,equip:{}},
+{id:1758,nom:"Aire sans nom",lat:48.60601,lng:0.16511,km:"Aire de repos",note:null,equip:{}},
+{id:1759,nom:"Aire sans nom",lat:48.61886,lng:-3.00179,km:"Aire de repos",note:null,equip:{}},
+{id:1760,nom:"Aire sans nom",lat:48.61768,lng:5.66206,km:"Aire de repos",note:null,equip:{}},
+{id:1761,nom:"Aire sans nom",lat:48.63714,lng:-2.0758,km:"Aire de repos",note:null,equip:{}},
+{id:1762,nom:"Aire sans nom",lat:48.63581,lng:4.18075,km:"Aire de repos",note:null,equip:{}},
+{id:1763,nom:"Aire sans nom",lat:48.63585,lng:4.17944,km:"Aire de repos",note:null,equip:{}},
+{id:1764,nom:"Aire sans nom",lat:48.66418,lng:-0.59827,km:"Aire de repos",note:null,equip:{}},
+{id:1765,nom:"Aire sans nom",lat:48.67465,lng:1.91297,km:"Aire de repos",note:null,equip:{}},
+{id:1766,nom:"Aire sans nom",lat:48.69443,lng:3.22643,km:"Aire de repos",note:null,equip:{}},
+{id:1767,nom:"Aire sans nom",lat:48.70108,lng:3.2544,km:"Aire de repos",note:null,equip:{}},
+{id:1768,nom:"Aire sans nom",lat:48.74362,lng:-3.39231,km:"Aire de repos",note:null,equip:{}},
+{id:1769,nom:"Aire sans nom",lat:48.73936,lng:0.58197,km:"Aire de repos",note:null,equip:{}},
+{id:1770,nom:"Aire de l'arche du gazon",lat:48.74117,lng:1.30977,km:"Aire de repos",note:null,equip:{}},
+{id:1771,nom:"Aire sans nom",lat:48.73755,lng:4.34183,km:"Aire de repos",note:null,equip:{}},
+{id:1772,nom:"Aire sans nom",lat:48.73876,lng:4.36213,km:"Aire de repos",note:null,equip:{}},
+{id:1773,nom:"Aire sans nom",lat:48.7436,lng:4.47591,km:"Aire de repos",note:null,equip:{}},
+{id:1774,nom:"Aire sans nom",lat:48.74921,lng:-3.35507,km:"Aire de repos",note:null,equip:{}},
+{id:1775,nom:"Aire sans nom",lat:48.75604,lng:0.34002,km:"Aire de repos",note:null,equip:{}},
+{id:1776,nom:"Espace détente/snack/\"plage\" du KABLE",lat:48.77208,lng:2.42656,km:"Aire de repos",note:null,equip:{}},
+{id:1777,nom:"Aire sans nom",lat:48.80747,lng:0.31013,km:"Aire de repos",note:null,equip:{}},
+{id:1778,nom:"Rugles",lat:48.81547,lng:0.70722,km:"Aire de repos",note:null,equip:{}},
+{id:1779,nom:"Aire sans nom",lat:48.82925,lng:3.08737,km:"Aire de repos",note:null,equip:{}},
+{id:1780,nom:"Aire sans nom",lat:48.83983,lng:2.32515,km:"Aire de repos",note:null,equip:{}},
+{id:1781,nom:"Aire sans nom",lat:48.85418,lng:1.17839,km:"Aire de repos",note:null,equip:{}},
+{id:1782,nom:"Aire sans nom",lat:48.84641,lng:3.08913,km:"Aire de repos",note:null,equip:{}},
+{id:1783,nom:"Aire sans nom",lat:48.84889,lng:5.53166,km:"Aire de repos",note:null,equip:{}},
+{id:1784,nom:"Aire sans nom",lat:48.86526,lng:3.09139,km:"Aire de repos",note:null,equip:{}},
+{id:1785,nom:"Aire du Piou",lat:48.87745,lng:-0.96461,km:"Aire de repos",note:null,equip:{}},
+{id:1786,nom:"Aire de la Rigaudière",lat:48.90498,lng:-1.00179,km:"Aire de repos",note:null,equip:{}},
+{id:1787,nom:"Spot banc eau",lat:48.8986,lng:2.82193,km:"Aire de repos",note:null,equip:{}},
+{id:1788,nom:"Aire sans nom",lat:48.89859,lng:4.30156,km:"Aire de repos",note:null,equip:{}},
+{id:1789,nom:"Aire sans nom",lat:48.89753,lng:4.30095,km:"Aire de repos",note:null,equip:{}},
+{id:1790,nom:"Aire sans nom",lat:48.90983,lng:4.30988,km:"Aire de repos",note:null,equip:{}},
+{id:1791,nom:"Aire sans nom",lat:48.91928,lng:1.16737,km:"Aire de repos",note:null,equip:{}},
+{id:1792,nom:"Clean&Go",lat:48.925,lng:2.20988,km:"Aire de services",note:null,equip:{}},
+{id:1793,nom:"Aire sans nom",lat:48.98007,lng:1.15811,km:"Aire de repos",note:null,equip:{}},
+{id:1794,nom:"Aire sans nom",lat:48.97868,lng:1.33203,km:"Aire de repos",note:null,equip:{}},
+{id:1795,nom:"Aire de la marche",lat:48.9774,lng:2.96559,km:"Aire de repos",note:null,equip:{}},
+{id:1796,nom:"Aire sans nom",lat:48.98769,lng:1.15675,km:"Aire de repos",note:null,equip:{}},
+{id:1797,nom:"Aire sans nom",lat:48.98891,lng:4.25295,km:"Aire de repos",note:null,equip:{}},
+{id:1798,nom:"Aire sans nom",lat:48.98804,lng:4.25617,km:"Aire de repos",note:null,equip:{}},
+{id:1799,nom:"Aire sans nom",lat:48.99626,lng:-1.02767,km:"Aire de repos",note:null,equip:{}},
+{id:1800,nom:"Aire sans nom",lat:49.00186,lng:4.21111,km:"Aire de repos",note:null,equip:{}},
+{id:1801,nom:"Aire sans nom",lat:49.00276,lng:4.20783,km:"Aire de repos",note:null,equip:{}},
+{id:1802,nom:"Aire sans nom",lat:48.9955,lng:5.59011,km:"Aire de repos",note:null,equip:{}},
+{id:1803,nom:"Aire sans nom",lat:49.01357,lng:4.14255,km:"Aire de repos",note:null,equip:{}},
+{id:1804,nom:"Aire sans nom",lat:49.01392,lng:4.13884,km:"Aire de repos",note:null,equip:{}},
+{id:1805,nom:"Aire sans nom",lat:49.01325,lng:4.14672,km:"Aire de repos",note:null,equip:{}},
+{id:1806,nom:"Aire sans nom",lat:49.00662,lng:4.19563,km:"Aire de repos",note:null,equip:{}},
+{id:1807,nom:"Aire sans nom",lat:49.01975,lng:4.05351,km:"Aire de repos",note:null,equip:{}},
+{id:1808,nom:"Aire sans nom",lat:49.01619,lng:4.10425,km:"Aire de repos",note:null,equip:{}},
+{id:1809,nom:"Aire sans nom",lat:49.01588,lng:4.1108,km:"Aire de repos",note:null,equip:{}},
+{id:1810,nom:"Aire sans nom",lat:49.0304,lng:3.99955,km:"Aire de repos",note:null,equip:{}},
+{id:1811,nom:"Aire sans nom",lat:49.03152,lng:3.99632,km:"Aire de repos",note:null,equip:{}},
+{id:1812,nom:"La Lune",lat:49.05939,lng:3.83695,km:"Aire de repos",note:null,equip:{}},
+{id:1813,nom:"Aire sans nom",lat:49.07769,lng:1.00102,km:"Aire de repos",note:null,equip:{}},
+{id:1814,nom:"Aire sans nom",lat:49.11324,lng:0.89026,km:"Aire de repos",note:null,equip:{}},
+{id:1815,nom:"Aire sans nom",lat:49.11189,lng:5.63639,km:"Aire de repos",note:null,equip:{}},
+{id:1816,nom:"Aire sans nom",lat:49.12087,lng:0.85701,km:"Aire de repos",note:null,equip:{}},
+{id:1817,nom:"Aire sans nom",lat:49.13212,lng:0.8069,km:"Aire de repos",note:null,equip:{}},
+{id:1818,nom:"Aire sans nom",lat:49.1441,lng:0.32995,km:"Aire de repos",note:null,equip:{}},
+{id:1819,nom:"Aire sans nom",lat:49.14847,lng:1.32191,km:"Aire de repos",note:null,equip:{}},
+{id:1820,nom:"Ravin du Genie",lat:49.18046,lng:5.00673,km:"Aire de repos",note:null,equip:{}},
+{id:1821,nom:"Aire sans nom",lat:49.17856,lng:5.42823,km:"Aire de repos",note:null,equip:{}},
+{id:1822,nom:"Aire sans nom",lat:49.18513,lng:2.64053,km:"Aire de repos",note:null,equip:{}},
+{id:1823,nom:"Aire sans nom",lat:49.18922,lng:5.89614,km:"Aire de repos",note:null,equip:{}},
+{id:1824,nom:"Aire sans nom",lat:49.21029,lng:4.07921,km:"Aire de repos",note:null,equip:{}},
+{id:1825,nom:"Aire sans nom",lat:49.23208,lng:-1.09391,km:"Aire de repos",note:null,equip:{}},
+{id:1826,nom:"Aire sans nom",lat:49.24449,lng:-1.11465,km:"Aire de repos",note:null,equip:{}},
+{id:1827,nom:"Reims Jante Rénovation",lat:49.23669,lng:4.09096,km:"Aire de services",note:null,equip:{}},
+{id:1828,nom:"Aire sans nom",lat:49.24228,lng:4.55476,km:"Aire de repos",note:null,equip:{}},
+{id:1829,nom:"Aire sans nom",lat:49.24793,lng:4.56233,km:"Aire de repos",note:null,equip:{}},
+{id:1830,nom:"Aire des Mobilités C2N",lat:49.27608,lng:-0.37992,km:"Aire de services",note:null,equip:{}},
+{id:1831,nom:"Aire sans nom",lat:49.2758,lng:2.77407,km:"Aire de repos",note:null,equip:{}},
+{id:1832,nom:"Aire sans nom",lat:49.31405,lng:0.83516,km:"Aire de repos",note:null,equip:{}},
+{id:1833,nom:"Aire sans nom",lat:49.3153,lng:0.83773,km:"Aire de repos",note:null,equip:{}},
+{id:1834,nom:"Aire sans nom",lat:49.33441,lng:0.2049,km:"Aire de repos",note:null,equip:{}},
+{id:1835,nom:"Aire sans nom",lat:49.35072,lng:5.84467,km:"Aire de repos",note:null,equip:{}},
+{id:1836,nom:"Aire sans nom",lat:49.35047,lng:5.84343,km:"Aire de repos",note:null,equip:{}},
+{id:1837,nom:"Aire sans nom",lat:49.39294,lng:0.24827,km:"Aire de repos",note:null,equip:{}},
+{id:1838,nom:"Aire sans nom",lat:49.39611,lng:3.08404,km:"Aire de repos",note:null,equip:{}},
+{id:1839,nom:"Aire sans nom",lat:49.39965,lng:6.56208,km:"Aire de repos",note:null,equip:{}},
+{id:1840,nom:"Aire sans nom",lat:49.42324,lng:0.67496,km:"Aire de repos",note:null,equip:{}},
+{id:1841,nom:"Aire de la Croix Gréal",lat:49.42198,lng:1.96819,km:"Aire de repos",note:null,equip:{}},
+{id:1842,nom:"Aire de la Mailleraye",lat:49.43419,lng:0.79162,km:"Aire de repos",note:null,equip:{}},
+{id:1843,nom:"Aire sans nom",lat:49.4299,lng:5.15412,km:"Aire de repos",note:null,equip:{}},
+{id:1844,nom:"Aire sans nom",lat:49.42781,lng:6.17006,km:"Aire de repos",note:null,equip:{}},
+{id:1845,nom:"Bio Nettoyage",lat:49.44842,lng:1.10095,km:"Aire de services",note:null,equip:{}},
+{id:1846,nom:"Aire sans nom",lat:49.4605,lng:5.99555,km:"Aire de repos",note:null,equip:{}},
+{id:1847,nom:"Aire sans nom",lat:49.48112,lng:3.91443,km:"Aire de repos",note:null,equip:{}},
+{id:1848,nom:"Aire sans nom",lat:49.4933,lng:4.58391,km:"Aire de repos",note:null,equip:{}},
+{id:1849,nom:"Aire sans nom",lat:49.48568,lng:6.00421,km:"Aire de repos",note:null,equip:{}},
+{id:1850,nom:"Aire sans nom",lat:49.499,lng:0.13261,km:"Aire de repos",note:null,equip:{}},
+{id:1851,nom:"Aire de Festieux",lat:49.51461,lng:3.75422,km:"Aire de repos",note:null,equip:{}},
+{id:1852,nom:"Aire sans nom",lat:49.51298,lng:6.16951,km:"Aire de repos",note:null,equip:{}},
+{id:1853,nom:"Aire sans nom",lat:49.51298,lng:6.24295,km:"Aire de repos",note:null,equip:{}},
+{id:1854,nom:"Aire sans nom",lat:49.52449,lng:-1.3168,km:"Aire de repos",note:null,equip:{}},
+{id:1855,nom:"Aire sans nom",lat:49.51685,lng:5.46462,km:"Aire de repos",note:null,equip:{}},
+{id:1856,nom:"Aire sans nom",lat:49.51539,lng:6.1824,km:"Aire de repos",note:null,equip:{}},
+{id:1857,nom:"Aire sans nom",lat:49.52053,lng:6.31829,km:"Aire de repos",note:null,equip:{}},
+{id:1858,nom:"Aire sans nom",lat:49.52412,lng:6.32518,km:"Aire de repos",note:null,equip:{}},
+{id:1859,nom:"Aire sans nom",lat:49.53227,lng:1.8872,km:"Aire de repos",note:null,equip:{}},
+{id:1860,nom:"Aire sans nom",lat:49.52877,lng:2.94083,km:"Aire de repos",note:null,equip:{}},
+{id:1861,nom:"Aire sans nom",lat:49.53845,lng:3.07286,km:"Aire de repos",note:null,equip:{}},
+{id:1862,nom:"Aire sans nom",lat:49.53914,lng:6.30014,km:"Aire de repos",note:null,equip:{}},
+{id:1863,nom:"Aire sans nom",lat:49.53925,lng:6.30226,km:"Aire de repos",note:null,equip:{}},
+{id:1864,nom:"Aire sans nom",lat:49.55258,lng:0.4159,km:"Aire de repos",note:null,equip:{}},
+{id:1865,nom:"Aire sans nom",lat:49.54864,lng:2.95915,km:"Aire de repos",note:null,equip:{}},
+{id:1866,nom:"Aire sans nom",lat:49.54926,lng:6.31858,km:"Aire de repos",note:null,equip:{}},
+{id:1867,nom:"Aire sans nom",lat:49.55303,lng:6.41916,km:"Aire de repos",note:null,equip:{}},
+{id:1868,nom:"Aire sans nom",lat:49.55663,lng:6.30719,km:"Aire de repos",note:null,equip:{}},
+{id:1869,nom:"Aire sans nom",lat:49.58356,lng:5.30398,km:"Aire de repos",note:null,equip:{}},
+{id:1870,nom:"Aire sans nom",lat:49.5836,lng:5.30256,km:"Aire de repos",note:null,equip:{}},
+{id:1871,nom:"Aire sans nom",lat:49.57928,lng:5.33465,km:"Aire de repos",note:null,equip:{}},
+{id:1872,nom:"Aire sans nom",lat:49.58481,lng:6.06806,km:"Aire de repos",note:null,equip:{}},
+{id:1873,nom:"Aire sans nom",lat:49.57723,lng:6.27048,km:"Aire de repos",note:null,equip:{}},
+{id:1874,nom:"Aire sans nom",lat:49.58168,lng:6.30203,km:"Aire de repos",note:null,equip:{}},
+{id:1875,nom:"Aire sans nom",lat:49.58711,lng:0.88119,km:"Aire de repos",note:null,equip:{}},
+{id:1876,nom:"Aire sans nom",lat:49.58522,lng:6.37472,km:"Aire de repos",note:null,equip:{}},
+{id:1877,nom:"Aire sans nom",lat:49.58588,lng:6.52949,km:"Aire de repos",note:null,equip:{}},
+{id:1878,nom:"Aire sans nom",lat:49.60469,lng:2.96129,km:"Aire de repos",note:null,equip:{}},
+{id:1879,nom:"Aire sans nom",lat:49.60132,lng:5.24428,km:"Aire de repos",note:null,equip:{}},
+{id:1880,nom:"Aire sans nom",lat:49.59991,lng:5.24557,km:"Aire de repos",note:null,equip:{}},
+{id:1881,nom:"Aire sans nom",lat:49.59515,lng:6.0405,km:"Aire de repos",note:null,equip:{}},
+{id:1882,nom:"Aire sans nom",lat:49.59638,lng:6.04389,km:"Aire de repos",note:null,equip:{}},
+{id:1883,nom:"Ponte-Kopp",lat:49.59798,lng:6.38818,km:"Aire de repos",note:null,equip:{}},
+{id:1884,nom:"Aire sans nom",lat:49.60105,lng:6.59266,km:"Aire de repos",note:null,equip:{}},
+{id:1885,nom:"Aire sans nom",lat:49.60869,lng:0.64717,km:"Aire de repos",note:null,equip:{}},
+{id:1886,nom:"Aire sans nom",lat:49.61083,lng:0.84227,km:"Aire de repos",note:null,equip:{}},
+{id:1887,nom:"Aire sans nom",lat:49.62464,lng:3.03061,km:"Aire de repos",note:null,equip:{}},
+{id:1888,nom:"Aire sans nom",lat:49.62251,lng:3.447,km:"Aire de repos",note:null,equip:{}},
+{id:1889,nom:"Aire sans nom",lat:49.61524,lng:6.17168,km:"Aire de repos",note:null,equip:{}},
+{id:1890,nom:"Aire sans nom",lat:49.61787,lng:6.42139,km:"Aire de repos",note:null,equip:{}},
+{id:1891,nom:"Aire sans nom",lat:49.61997,lng:6.56953,km:"Aire de repos",note:null,equip:{}},
+{id:1892,nom:"Aire sans nom",lat:49.63047,lng:2.37433,km:"Aire de repos",note:null,equip:{}},
+{id:1893,nom:"Aire sans nom",lat:49.62919,lng:2.37566,km:"Aire de repos",note:null,equip:{}},
+{id:1894,nom:"Aire sans nom",lat:49.63311,lng:2.91336,km:"Aire de repos",note:null,equip:{}},
+{id:1895,nom:"Aire sans nom",lat:49.63464,lng:5.34557,km:"Aire de repos",note:null,equip:{}},
+{id:1896,nom:"Aire sans nom",lat:49.63105,lng:5.4232,km:"Aire de repos",note:null,equip:{}},
+{id:1897,nom:"Aire sans nom",lat:49.64443,lng:0.83928,km:"Aire de repos",note:null,equip:{}},
+{id:1898,nom:"Aire sans nom",lat:49.64094,lng:6.40205,km:"Aire de repos",note:null,equip:{}},
+{id:1899,nom:"Aire sans nom",lat:49.65255,lng:0.60332,km:"Aire de repos",note:null,equip:{}},
+{id:1900,nom:"Aire sans nom",lat:49.65056,lng:5.94477,km:"Aire de repos",note:null,equip:{}},
+{id:1901,nom:"Aire sans nom",lat:49.65872,lng:2.87007,km:"Aire de repos",note:null,equip:{}},
+{id:1902,nom:"Aire sans nom",lat:49.65726,lng:3.3872,km:"Aire de repos",note:null,equip:{}},
+{id:1903,nom:"Aire sans nom",lat:49.6585,lng:5.88323,km:"Aire de repos",note:null,equip:{}},
+{id:1904,nom:"Aire sans nom",lat:49.65552,lng:5.93912,km:"Aire de repos",note:null,equip:{}},
+{id:1905,nom:"Aire sans nom",lat:49.65599,lng:6.58867,km:"Aire de repos",note:null,equip:{}},
+{id:1906,nom:"Aire sans nom",lat:49.67142,lng:0.94253,km:"Aire de repos",note:null,equip:{}},
+{id:1907,nom:"Aire sans nom",lat:49.67497,lng:5.56026,km:"Aire de repos",note:null,equip:{}},
+{id:1908,nom:"Aire sans nom",lat:49.67474,lng:5.9332,km:"Aire de repos",note:null,equip:{}},
+{id:1909,nom:"Aire sans nom",lat:49.67192,lng:6.0596,km:"Aire de repos",note:null,equip:{}},
+{id:1910,nom:"Aire sans nom",lat:49.67559,lng:0.97578,km:"Aire de repos",note:null,equip:{}},
+{id:1911,nom:"Aire sans nom",lat:49.67746,lng:2.83878,km:"Aire de repos",note:null,equip:{}},
+{id:1912,nom:"Aire sans nom",lat:49.67668,lng:2.83987,km:"Aire de repos",note:null,equip:{}},
+{id:1913,nom:"Aire sans nom",lat:49.6782,lng:3.35009,km:"Aire de repos",note:null,equip:{}},
+{id:1914,nom:"Aire sans nom",lat:49.68998,lng:-1.46861,km:"Aire de repos",note:null,equip:{}},
+{id:1915,nom:"Aire sans nom",lat:49.69351,lng:6.03042,km:"Aire de repos",note:null,equip:{}},
+{id:1916,nom:"Aire sans nom",lat:49.68982,lng:6.38232,km:"Aire de repos",note:null,equip:{}},
+{id:1917,nom:"Aire sans nom",lat:49.69554,lng:6.08913,km:"Aire de repos",note:null,equip:{}},
+{id:1918,nom:"Aire sans nom",lat:49.70818,lng:6.00812,km:"Aire de repos",note:null,equip:{}},
+{id:1919,nom:"Aire sans nom",lat:49.71075,lng:6.0605,km:"Aire de repos",note:null,equip:{}},
+{id:1920,nom:"Aire sans nom",lat:49.72054,lng:6.07652,km:"Aire de repos",note:null,equip:{}},
+{id:1921,nom:"Aire sans nom",lat:49.72409,lng:6.51199,km:"Aire de repos",note:null,equip:{}},
+{id:1922,nom:"Aire sans nom",lat:49.72113,lng:6.51502,km:"Aire de repos",note:null,equip:{}},
+{id:1923,nom:"Aire sans nom",lat:49.72796,lng:6.09935,km:"Aire de repos",note:null,equip:{}},
+{id:1924,nom:"Aire sans nom",lat:49.73398,lng:6.2904,km:"Aire de repos",note:null,equip:{}},
+{id:1925,nom:"Aire sans nom",lat:49.73328,lng:6.29756,km:"Aire de repos",note:null,equip:{}},
+{id:1926,nom:"Aire sans nom",lat:49.73009,lng:6.5067,km:"Aire de repos",note:null,equip:{}},
+{id:1927,nom:"Aire sans nom",lat:49.72514,lng:6.51286,km:"Aire de repos",note:null,equip:{}},
+{id:1928,nom:"Aire sans nom",lat:49.74992,lng:0.77323,km:"Aire de repos",note:null,equip:{}},
+{id:1929,nom:"Aire sans nom",lat:49.74682,lng:6.23009,km:"Aire de repos",note:null,equip:{}},
+{id:1930,nom:"Aire sans nom",lat:49.74866,lng:6.26617,km:"Aire de repos",note:null,equip:{}},
+{id:1931,nom:"Rippëger Kopp",lat:49.74505,lng:6.30308,km:"Aire de repos",note:null,equip:{}},
+{id:1932,nom:"Aire sans nom",lat:49.76342,lng:3.05276,km:"Aire de repos",note:null,equip:{}},
+{id:1933,nom:"Aire sans nom",lat:49.76292,lng:6.35091,km:"Aire de repos",note:null,equip:{}},
+{id:1934,nom:"Aire sans nom",lat:49.77201,lng:3.33328,km:"Aire de repos",note:null,equip:{}},
+{id:1935,nom:"Aire sans nom",lat:49.77353,lng:5.92181,km:"Aire de repos",note:null,equip:{}},
+{id:1936,nom:"Aire sans nom",lat:49.78221,lng:5.80941,km:"Aire de repos",note:null,equip:{}},
+{id:1937,nom:"Aire sans nom",lat:49.77939,lng:6.33259,km:"Aire de repos",note:null,equip:{}},
+{id:1938,nom:"Seidemuer",lat:49.7847,lng:6.38337,km:"Aire de repos",note:null,equip:{}},
+{id:1939,nom:"Aire sans nom",lat:49.78651,lng:3.32672,km:"Aire de repos",note:null,equip:{}},
+{id:1940,nom:"Aire sans nom",lat:49.79439,lng:5.87838,km:"Aire de repos",note:null,equip:{}},
+{id:1941,nom:"Aire sans nom",lat:49.78626,lng:6.25493,km:"Aire de repos",note:null,equip:{}},
+{id:1942,nom:"Aire sans nom",lat:49.79474,lng:6.37056,km:"Aire de repos",note:null,equip:{}},
+{id:1943,nom:"Aire sans nom",lat:49.79053,lng:6.37422,km:"Aire de repos",note:null,equip:{}},
+{id:1944,nom:"Aire sans nom",lat:49.79038,lng:6.50424,km:"Aire de repos",note:null,equip:{}},
+{id:1945,nom:"Bei der Bomm",lat:49.80225,lng:6.12979,km:"Aire de repos",note:null,equip:{}},
+{id:1946,nom:"Aire sans nom",lat:49.79548,lng:6.48804,km:"Aire de repos",note:null,equip:{}},
+{id:1947,nom:"Aire sans nom",lat:49.8142,lng:3.31405,km:"Aire de repos",note:null,equip:{}},
+{id:1948,nom:"Aire sans nom",lat:49.81595,lng:3.31346,km:"Aire de repos",note:null,equip:{}},
+{id:1949,nom:"Aire sans nom",lat:49.81506,lng:5.7641,km:"Aire de repos",note:null,equip:{}},
+{id:1950,nom:"Aire sans nom",lat:49.81885,lng:6.32571,km:"Aire de repos",note:null,equip:{}},
+{id:1951,nom:"Aire sans nom",lat:49.81766,lng:6.36976,km:"Aire de repos",note:null,equip:{}},
+{id:1952,nom:"Aire sans nom",lat:49.82191,lng:6.39736,km:"Aire de repos",note:null,equip:{}},
+{id:1953,nom:"Aire sans nom",lat:49.82009,lng:6.46667,km:"Aire de repos",note:null,equip:{}},
+{id:1954,nom:"Echternacherhof",lat:49.81819,lng:6.57215,km:"Aire de repos",note:null,equip:{}},
+{id:1955,nom:"Aire sans nom",lat:49.82971,lng:5.99013,km:"Aire de repos",note:null,equip:{}},
+{id:1956,nom:"Aire sans nom",lat:49.83227,lng:6.14134,km:"Aire de repos",note:null,equip:{}},
+{id:1957,nom:"Aire sans nom",lat:49.83149,lng:6.29078,km:"Aire de repos",note:null,equip:{}},
+{id:1958,nom:"Aire sans nom",lat:49.83881,lng:1.40518,km:"Aire de repos",note:null,equip:{}},
+{id:1959,nom:"Aire sans nom",lat:49.83711,lng:5.75581,km:"Aire de repos",note:null,equip:{}},
+{id:1960,nom:"Aire sans nom",lat:49.83813,lng:5.78401,km:"Aire de repos",note:null,equip:{}},
+{id:1961,nom:"Aire sans nom",lat:49.8439,lng:6.37343,km:"Aire de repos",note:null,equip:{}},
+{id:1962,nom:"Aire sans nom",lat:49.86189,lng:5.13317,km:"Aire de repos",note:null,equip:{}},
+{id:1963,nom:"Aire sans nom",lat:49.86417,lng:5.84258,km:"Aire de repos",note:null,equip:{}},
+{id:1964,nom:"Aire sans nom",lat:49.86477,lng:5.93361,km:"Aire de repos",note:null,equip:{}},
+{id:1965,nom:"Aire sans nom",lat:49.85979,lng:6.02323,km:"Aire de repos",note:null,equip:{}},
+{id:1966,nom:"Aire sans nom",lat:49.85669,lng:6.27497,km:"Aire de repos",note:null,equip:{}},
+{id:1967,nom:"Aire sans nom",lat:49.86181,lng:6.46202,km:"Aire de repos",note:null,equip:{}},
+{id:1968,nom:"Aire sans nom",lat:49.87217,lng:5.82186,km:"Aire de repos",note:null,equip:{}},
+{id:1969,nom:"Aire sans nom",lat:49.86577,lng:5.83236,km:"Aire de repos",note:null,equip:{}},
+{id:1970,nom:"Aire sans nom",lat:49.87397,lng:5.93038,km:"Aire de repos",note:null,equip:{}},
+{id:1971,nom:"Aire sans nom",lat:49.87024,lng:5.99963,km:"Aire de repos",note:null,equip:{}},
+{id:1972,nom:"Aire sans nom",lat:49.86532,lng:6.00714,km:"Aire de repos",note:null,equip:{}},
+{id:1973,nom:"Aire sans nom",lat:49.87195,lng:6.11266,km:"Aire de repos",note:null,equip:{}},
+{id:1974,nom:"Aire sans nom",lat:49.87105,lng:6.29122,km:"Aire de repos",note:null,equip:{}},
+{id:1975,nom:"Aire sans nom",lat:49.88404,lng:6.14357,km:"Aire de repos",note:null,equip:{}},
+{id:1976,nom:"Aire sans nom",lat:49.89403,lng:5.95336,km:"Aire de repos",note:null,equip:{}},
+{id:1977,nom:"Aire sans nom",lat:49.89174,lng:5.95194,km:"Aire de repos",note:null,equip:{}},
+{id:1978,nom:"Aire sans nom",lat:49.88841,lng:5.96554,km:"Aire de repos",note:null,equip:{}},
+{id:1979,nom:"Station de Gonflage de Pneu",lat:49.89831,lng:2.29236,km:"Aire de services",note:null,equip:{}},
+{id:1980,nom:"Aire sans nom",lat:49.89924,lng:5.87978,km:"Aire de repos",note:null,equip:{}},
+{id:1981,nom:"Aire sans nom",lat:49.90372,lng:5.89633,km:"Aire de repos",note:null,equip:{}},
+{id:1982,nom:"Aire sans nom",lat:49.90217,lng:5.91717,km:"Aire de repos",note:null,equip:{}},
+{id:1983,nom:"Aire sans nom",lat:49.90477,lng:5.93167,km:"Aire de repos",note:null,equip:{}},
+{id:1984,nom:"Aire sans nom",lat:49.89755,lng:6.06839,km:"Aire de repos",note:null,equip:{}},
+{id:1985,nom:"Aire sans nom",lat:49.8955,lng:6.10506,km:"Aire de repos",note:null,equip:{}},
+{id:1986,nom:"Aire sans nom",lat:49.91342,lng:5.92418,km:"Aire de repos",note:null,equip:{}},
+{id:1987,nom:"Aire sans nom",lat:49.90998,lng:5.96478,km:"Aire de repos",note:null,equip:{}},
+{id:1988,nom:"Aire sans nom",lat:49.91186,lng:5.97947,km:"Aire de repos",note:null,equip:{}},
+{id:1989,nom:"Aire sans nom",lat:49.91224,lng:6.05581,km:"Aire de repos",note:null,equip:{}},
+{id:1990,nom:"Aire sans nom",lat:49.90821,lng:6.18978,km:"Aire de repos",note:null,equip:{}},
+{id:1991,nom:"Aire sans nom",lat:49.91943,lng:5.83551,km:"Aire de repos",note:null,equip:{}},
+{id:1992,nom:"Aire sans nom",lat:49.92399,lng:5.94149,km:"Aire de repos",note:null,equip:{}},
+{id:1993,nom:"Aire sans nom",lat:49.92239,lng:5.94229,km:"Aire de repos",note:null,equip:{}},
+{id:1994,nom:"Aire sans nom",lat:49.92089,lng:6.19444,km:"Aire de repos",note:null,equip:{}},
+{id:1995,nom:"Aire sans nom",lat:49.92099,lng:6.19256,km:"Aire de repos",note:null,equip:{}},
+{id:1996,nom:"Aire sans nom",lat:49.91833,lng:6.47594,km:"Aire de repos",note:null,equip:{}},
+{id:1997,nom:"Aire sans nom",lat:49.93026,lng:5.94011,km:"Aire de repos",note:null,equip:{}},
+{id:1998,nom:"Aire sans nom",lat:49.93359,lng:6.18744,km:"Aire de repos",note:null,equip:{}},
+{id:1999,nom:"Aire sans nom",lat:49.92791,lng:6.19615,km:"Aire de repos",note:null,equip:{}},
+{id:2000,nom:"Aire sans nom",lat:49.92731,lng:6.2345,km:"Aire de repos",note:null,equip:{}},
+{id:2001,nom:"Aire sans nom",lat:49.93512,lng:5.91601,km:"Aire de repos",note:null,equip:{}},
+{id:2002,nom:"Aire sans nom",lat:49.94485,lng:6.17887,km:"Aire de repos",note:null,equip:{}},
+{id:2003,nom:"Aire sans nom",lat:49.95425,lng:1.6563,km:"Aire de repos",note:null,equip:{}},
+{id:2004,nom:"Aire sans nom",lat:49.94704,lng:6.14766,km:"Aire de repos",note:null,equip:{}},
+{id:2005,nom:"Aire sans nom",lat:49.94637,lng:6.16691,km:"Aire de repos",note:null,equip:{}},
+{id:2006,nom:"Aire sans nom",lat:49.94808,lng:6.5437,km:"Aire de repos",note:null,equip:{}},
+{id:2007,nom:"Aire sans nom",lat:49.96365,lng:2.84858,km:"Aire de repos",note:null,equip:{}},
+{id:2008,nom:"Aire sans nom",lat:49.97055,lng:6.5874,km:"Aire de repos",note:null,equip:{}},
+{id:2009,nom:"Aire sans nom",lat:49.9828,lng:1.69384,km:"Aire de repos",note:null,equip:{}},
+{id:2010,nom:"Aire sans nom",lat:49.98012,lng:4.63602,km:"Aire de repos",note:null,equip:{}},
+{id:2011,nom:"Aire sans nom",lat:49.98594,lng:5.85627,km:"Aire de repos",note:null,equip:{}},
+{id:2012,nom:"Aire sans nom",lat:49.99066,lng:5.96292,km:"Aire de repos",note:null,equip:{}},
+{id:2013,nom:"Aire sans nom",lat:49.98558,lng:6.56384,km:"Aire de repos",note:null,equip:{}},
+{id:2014,nom:"Aire sans nom",lat:49.99658,lng:6.01549,km:"Aire de repos",note:null,equip:{}},
+{id:2015,nom:"Aire sans nom",lat:50.0106,lng:5.65502,km:"Aire de repos",note:null,equip:{}},
+{id:2016,nom:"Aire sans nom",lat:50.03314,lng:6.12856,km:"Aire de repos",note:null,equip:{}},
+{id:2017,nom:"Aire sans nom",lat:50.03577,lng:1.76505,km:"Aire de repos",note:null,equip:{}},
+{id:2018,nom:"Aire sans nom",lat:50.03509,lng:5.12533,km:"Aire de repos",note:null,equip:{}},
+{id:2019,nom:"Aire sans nom",lat:50.04901,lng:6.15702,km:"Aire de repos",note:null,equip:{}},
+{id:2020,nom:"Aire sans nom",lat:50.0568,lng:5.89511,km:"Aire de repos",note:null,equip:{}},
+{id:2021,nom:"Aire sans nom",lat:50.05643,lng:5.98188,km:"Aire de repos",note:null,equip:{}},
+{id:2022,nom:"Aire sans nom",lat:50.05515,lng:6.04847,km:"Aire de repos",note:null,equip:{}},
+{id:2023,nom:"Aire sans nom",lat:50.06148,lng:6.50161,km:"Aire de repos",note:null,equip:{}},
+{id:2024,nom:"Aire sans nom",lat:50.07397,lng:6.02167,km:"Aire de repos",note:null,equip:{}},
+{id:2025,nom:"Aire sans nom",lat:50.08331,lng:3.19905,km:"Aire de repos",note:null,equip:{}},
+{id:2026,nom:"Aire sans nom",lat:50.0853,lng:6.33385,km:"Aire de repos",note:null,equip:{}},
+{id:2027,nom:"Aire sans nom",lat:50.09555,lng:4.5085,km:"Aire de repos",note:null,equip:{}},
+{id:2028,nom:"Aire sans nom",lat:50.11722,lng:6.00027,km:"Aire de repos",note:null,equip:{}},
+{id:2029,nom:"Aire sans nom",lat:50.11686,lng:6.53906,km:"Aire de repos",note:null,equip:{}},
+{id:2030,nom:"Aire sans nom",lat:50.15219,lng:4.36695,km:"Aire de repos",note:null,equip:{}},
+{id:2031,nom:"Aire sans nom",lat:50.14872,lng:5.44462,km:"Aire de repos",note:null,equip:{}},
+{id:2032,nom:"Aire sans nom",lat:50.15686,lng:6.05274,km:"Aire de repos",note:null,equip:{}},
+{id:2033,nom:"Aire sans nom",lat:50.17567,lng:6.42477,km:"Aire de repos",note:null,equip:{}},
+{id:2034,nom:"Aire sans nom",lat:50.18144,lng:6.44694,km:"Aire de repos",note:null,equip:{}},
+{id:2035,nom:"Aire sans nom",lat:50.19507,lng:5.44569,km:"Aire de repos",note:null,equip:{}},
+{id:2036,nom:"Aire sans nom",lat:50.19541,lng:6.43625,km:"Aire de repos",note:null,equip:{}},
+{id:2037,nom:"Aire sans nom",lat:50.21499,lng:5.61309,km:"Aire de repos",note:null,equip:{}},
+{id:2038,nom:"Aire sans nom",lat:50.22462,lng:6.44821,km:"Aire de repos",note:null,equip:{}},
+{id:2039,nom:"Aire sans nom",lat:50.21968,lng:6.45156,km:"Aire de repos",note:null,equip:{}},
+{id:2040,nom:"Aire sans nom",lat:50.21974,lng:6.51674,km:"Aire de repos",note:null,equip:{}},
+{id:2041,nom:"Aire sans nom",lat:50.22028,lng:6.52061,km:"Aire de repos",note:null,equip:{}},
+{id:2042,nom:"Aire sans nom",lat:50.24133,lng:5.18836,km:"Aire de repos",note:null,equip:{}},
+{id:2043,nom:"Aire sans nom",lat:50.29371,lng:4.64797,km:"Aire de repos",note:null,equip:{}},
+{id:2044,nom:"Aire sans nom",lat:50.31061,lng:4.88517,km:"Aire de repos",note:null,equip:{}},
+{id:2045,nom:"Aire sans nom",lat:50.3531,lng:4.47152,km:"Aire de repos",note:null,equip:{}},
+{id:2046,nom:"Aire sans nom",lat:50.36364,lng:4.87076,km:"Aire de repos",note:null,equip:{}},
+{id:2047,nom:"Aire sans nom",lat:50.37693,lng:3.24601,km:"Aire de repos",note:null,equip:{}},
+{id:2048,nom:"Aire sans nom",lat:50.39394,lng:4.83393,km:"Aire de repos",note:null,equip:{}},
+{id:2049,nom:"Aire sans nom",lat:50.40642,lng:2.36487,km:"Aire de repos",note:null,equip:{}},
+{id:2050,nom:"Maxinet",lat:50.40976,lng:4.17016,km:"Aire de services",note:null,equip:{}},
+{id:2051,nom:"Aire sans nom",lat:50.42727,lng:2.58176,km:"Aire de repos",note:null,equip:{}},
+{id:2052,nom:"Aire sans nom",lat:50.42659,lng:6.37278,km:"Aire de repos",note:null,equip:{}},
+{id:2053,nom:"Aire sans nom",lat:50.43852,lng:5.00779,km:"Aire de repos",note:null,equip:{}},
+{id:2054,nom:"Aire sans nom",lat:50.48182,lng:2.59804,km:"Aire de repos",note:null,equip:{}},
+{id:2055,nom:"Aire sans nom",lat:50.48763,lng:2.6017,km:"Aire de repos",note:null,equip:{}},
+{id:2056,nom:"Aire sans nom",lat:50.50804,lng:5.9016,km:"Aire de repos",note:null,equip:{}},
+{id:2057,nom:"Aire sans nom",lat:50.56465,lng:6.31479,km:"Aire de repos",note:null,equip:{}},
+{id:2058,nom:"Aire sans nom",lat:50.56926,lng:2.4666,km:"Aire de repos",note:null,equip:{}},
+{id:2059,nom:"Aire sans nom",lat:50.56911,lng:2.48759,km:"Aire de repos",note:null,equip:{}},
+{id:2060,nom:"Aire sans nom",lat:50.59683,lng:5.62049,km:"Aire de services",note:null,equip:{}},
+{id:2061,nom:"Aire sans nom",lat:50.62676,lng:6.0856,km:"Aire de repos",note:null,equip:{}},
+{id:2062,nom:"Aire sans nom",lat:50.63838,lng:3.681,km:"Aire de repos",note:null,equip:{}},
+{id:2063,nom:"Aire sans nom",lat:50.65611,lng:6.39603,km:"Aire de repos",note:null,equip:{}},
+{id:2064,nom:"Aire de Crisnée",lat:50.68778,lng:5.41324,km:"Aire de repos",note:null,equip:{}},
+{id:2065,nom:"Aire de Crisnée",lat:50.68773,lng:5.4179,km:"Aire de repos",note:null,equip:{}},
+{id:2066,nom:"Aire sans nom",lat:50.69494,lng:6.29928,km:"Aire de repos",note:null,equip:{}},
+{id:2067,nom:"Aire sans nom",lat:50.77279,lng:2.24061,km:"Aire de repos",note:null,equip:{}},
+{id:2068,nom:"Aire sans nom",lat:50.76616,lng:2.26238,km:"Aire de repos",note:null,equip:{}},
+{id:2069,nom:"Aire sans nom",lat:50.78286,lng:3.93492,km:"Aire de repos",note:null,equip:{}},
+{id:2070,nom:"Aire sans nom",lat:50.78131,lng:6.08006,km:"Aire de repos",note:null,equip:{}},
+{id:2071,nom:"Aire sans nom",lat:50.82228,lng:-0.72422,km:"Aire de repos",note:null,equip:{}},
+{id:2072,nom:"Aire sans nom",lat:50.83428,lng:-0.77309,km:"Aire de repos",note:null,equip:{}},
+{id:2073,nom:"Aire sans nom",lat:50.87327,lng:4.61179,km:"Aire de repos",note:null,equip:{}},
+{id:2074,nom:"Aire sans nom",lat:50.88054,lng:0.59817,km:"Aire de repos",note:null,equip:{}},
+{id:2075,nom:"NB Personeel",lat:50.8894,lng:5.97691,km:"Aire de services",note:null,equip:{}},
+{id:2076,nom:"La Conciergerie",lat:50.94834,lng:1.8556,km:"Aire de services",note:null,equip:{}},
+{id:2077,nom:"Aire sans nom",lat:50.96889,lng:4.31607,km:"Aire de repos",note:null,equip:{}},
+{id:2078,nom:"Aire sans nom",lat:50.97973,lng:2.05498,km:"Aire de repos",note:null,equip:{}},
+{id:2079,nom:"Aire sans nom",lat:50.98262,lng:3.77871,km:"Aire de repos",note:null,equip:{}},
+{id:2080,nom:"Aire sans nom",lat:50.98043,lng:5.97263,km:"Aire de repos",note:null,equip:{}},
+{id:2081,nom:"Aire sans nom",lat:50.99653,lng:4.55208,km:"Aire de repos",note:null,equip:{}},
+{id:2082,nom:"Aire sans nom",lat:51.00772,lng:2.11836,km:"Aire de services",note:null,equip:{}},
+{id:2083,nom:"Aire sans nom",lat:51.03843,lng:3.7321,km:"Aire de repos",note:null,equip:{}},
+{id:2084,nom:"Churlwood",lat:51.06115,lng:0.02039,km:"Aire de repos",note:null,equip:{}},
+{id:2085,nom:"Aire sans nom",lat:51.05854,lng:4.74725,km:"Aire de repos",note:null,equip:{}},
+{id:2086,nom:"Aire sans nom",lat:51.07872,lng:4.40453,km:"Aire de repos",note:null,equip:{}},
+{id:2087,nom:"Folkestone 24 hour Services",lat:51.09494,lng:1.04481,km:"Aire de services",note:null,equip:{}}
+,
+{id:3000,nom:"Aire de la Grassinière",lat:47.16023,lng:-1.51245,km:"Aire de repos",note:null,equip:{}},
+{id:3001,nom:"Aire de Remouillé-Est",lat:47.01999,lng:-1.39572,km:"Aire de repos",note:null,equip:{enfants:"ok"}},
+{id:3002,nom:"Aire de Remouillé-Ouest",lat:47.02395,lng:-1.40099,km:"Aire de repos",note:null,equip:{enfants:"ok"}},
+{id:3003,nom:"Aire des Brouzils",lat:46.87924,lng:-1.28946,km:"Aire de services",note:null,equip:{restaurant:"ok",wifi:"ok"}},
+{id:3004,nom:"Aire de Chavagnes-en-Paillers",lat:46.87382,lng:-1.28393,km:"Aire de services",note:null,equip:{restaurant:"ok",enfants:"ok",douches:"ok",eau:"ok"}},
+{id:3005,nom:"Aire de Sainte-Florence",lat:46.76875,lng:-1.17739,km:"Aire de repos",note:null,equip:{enfants:"ok",eau:"ok"}},
+{id:3006,nom:"Aire de la Vendée",lat:46.57312,lng:-1.11656,km:"Aire de services",note:null,equip:{restaurant:"ok",enfants:"ok",douches:"ok",wifi:"ok"}},
+{id:3007,nom:"Aire d'Auzay Est",lat:46.45348,lng:-0.8646,km:"Aire de repos",note:null,equip:{}},
+{id:3008,nom:"Aire d'Auzay-Ouest",lat:46.44697,lng:-0.85047,km:"Aire de repos",note:null,equip:{restaurant:"ok",douches:"nok"}},
+{id:3009,nom:"Aire des Deux-Sèvres",lat:46.42869,lng:-0.50634,km:"Aire de services",note:null,equip:{restaurant:"ok"}},
+{id:3010,nom:"Aire de la Parthenaise",lat:46.43065,lng:-0.50189,km:"Aire de services",note:null,equip:{restaurant:"ok"}},
+{id:3011,nom:"Aire de Poitou-Charentes Nord",lat:46.29697,lng:-0.37694,km:"Aire de services",note:null,equip:{restaurant:"ok",douches:"ok"}},
+{id:3012,nom:"Aire de Poitou-Charentes Sud",lat:46.29718,lng:-0.37273,km:"Aire de services",note:null,equip:{}},
+{id:3013,nom:"Aire de Dœuil-sur-le-Mignon Est",lat:46.11306,lng:-0.53355,km:"Aire de repos",note:null,equip:{}},
+{id:3014,nom:"Aire de Dœuil-sur-le-Mignon Ouest",lat:46.11768,lng:-0.53406,km:"Aire de repos",note:null,equip:{}},
+{id:3015,nom:"Aire de Lozay",lat:46.02374,lng:-0.54188,km:"Aire de repos",note:null,equip:{}},
+{id:3016,nom:"Aire de La Benâte",lat:46.01133,lng:-0.54013,km:"Aire de repos",note:null,equip:{}},
+{id:3017,nom:"Aire de Fenioux Est",lat:45.89187,lng:-0.60535,km:"Aire de services",note:null,equip:{}},
+{id:3018,nom:"Aire de Fenioux Ouest",lat:45.89452,lng:-0.60372,km:"Aire de services",note:null,equip:{}},
+{id:3019,nom:"Aire de Port-d'Envaux Est",lat:45.79921,lng:-0.65604,km:"Aire de repos",note:null,equip:{}},
+{id:3020,nom:"Aire de Port-d'Envaux Ouest",lat:45.79751,lng:-0.66078,km:"Aire de repos",note:null,equip:{}},
+{id:3021,nom:"Aire de Saint-Léger",lat:45.61304,lng:-0.60378,km:"Aire de services",note:null,equip:{}},
+{id:3022,nom:"Aire de Saint-Palais Est",lat:45.51258,lng:-0.61142,km:"Aire de repos",note:null,equip:{}},
+{id:3023,nom:"Aire de Saint-Ciers Est",lat:45.44203,lng:-0.60674,km:"Aire de repos",note:null,equip:{}},
+{id:3024,nom:"Aire de Saint-Ciers Ouest",lat:45.44133,lng:-0.60837,km:"Aire de repos",note:null,equip:{}},
+{id:3025,nom:"Aire de Saint-Caprais",lat:45.29733,lng:-0.55516,km:"Aire de repos",note:null,equip:{}},
+{id:3026,nom:"Aire de Boisredon",lat:45.3136,lng:-0.55774,km:"Aire de repos",note:null,equip:{}},
+{id:3027,nom:"Aire de Saugon Ouest",lat:45.1892,lng:-0.49311,km:"Aire de services",note:null,equip:{}},
+{id:3028,nom:"Aire des Terres de l'Estuaire",lat:45.18917,lng:-0.4907,km:"Aire de services",note:null,equip:{}},
+{id:3029,nom:"Aire de Saint-Christoly",lat:45.10737,lng:-0.48367,km:"Aire de repos",note:null,equip:{}},
+{id:3030,nom:"Aire de Cézac",lat:45.06673,lng:-0.46057,km:"Aire de repos",note:null,equip:{}}
+];
+
+// ── État global ──
+let map, userMarker, userCircle, routeLine;
+let mapMarkers = [];
+let currentFilter = 'all';
+let currentAire = null;
+let contribStates = {};
+let starRating = 0;
+let osmAires = STATIC_AIRES.slice(); // aires réelles, embarquées directement (fiable, aucun réseau requis)
+
+function getAires() { return osmAires || []; }
+
+// ── Carte ──
+map = L.map('map', {zoomControl: false}).setView([46.5, 2.5], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>', maxZoom: 18
+}).addTo(map);
+L.control.zoom({position: 'topright'}).addTo(map);
+
+function mkAireIcon(active) {
+  const s = active ? 30 : 22, bg = active ? '#1D9E75' : '#B4B2A9';
+  return L.divIcon({className:'', iconSize:[s,s], iconAnchor:[s/2,s],
+    html:`<div style="width:${s}px;height:${s}px;background:${bg};border:2.5px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 5px rgba(0,0,0,.2)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg></div>`
+  });
+}
+function mkUserIcon() {
+  return L.divIcon({className:'', iconSize:[22,22], iconAnchor:[11,11],
+    html:`<div style="position:relative;width:22px;height:22px;display:flex;align-items:center;justify-content:center"><div class="pulse" style="position:absolute;width:22px;height:22px;border-radius:50%;border:2px solid #378ADD"></div><div style="width:13px;height:13px;background:#378ADD;border:2.5px solid #fff;border-radius:50%"></div></div>`
+  });
+}
+
+function renderMarkers(data) {
+  mapMarkers.forEach(m => map.removeLayer(m));
+  mapMarkers = [];
+  (data || getAires()).forEach(aire => {
+    const active = currentFilter === 'all' || (aire.equip && aire.equip[currentFilter] === 'ok');
+    const mk = L.marker([aire.lat, aire.lng], {icon: mkAireIcon(active)}).addTo(map);
+    mk.on('click', () => openDetail(aire));
+    mapMarkers.push(mk);
+  });
+}
+
+// ── Utilitaires ──
+function haversine(a, b, c, d) {
+  const R=6371, dL=(c-a)*Math.PI/180, dN=(d-b)*Math.PI/180;
+  const x=Math.sin(dL/2)**2+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dN/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function distLabel(km) { return km<1 ? Math.round(km*1000)+'m' : km.toFixed(1)+'km'; }
+function setStatus(t) { document.getElementById('status-bar').textContent = t; }
+
+// ── Modes ──
+function switchMode(mode) {
+  document.getElementById('tab-geo').classList.toggle('active', mode==='geo');
+  document.getElementById('tab-trajet').classList.toggle('active', mode==='trajet');
+  document.getElementById('trajet-bar').classList.toggle('visible', mode==='trajet');
+  if (mode === 'geo') geolocate();
+}
+
+// ── Géolocalisation ──
+function geolocate() {
+  setStatus('Localisation en cours…');
+  if (!navigator.geolocation) {
+    setStatus("La géolocalisation n'est pas disponible sur ce navigateur.");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    p => applyPos([p.coords.latitude, p.coords.longitude], p.coords.accuracy),
+    (err) => {
+      if (err.code === err.PERMISSION_DENIED) {
+        setStatus("Localisation refusée · autorise l'accès à ta position dans les réglages du navigateur");
+      } else if (err.code === err.POSITION_UNAVAILABLE) {
+        setStatus('Position indisponible · vérifie que le GPS/la localisation est activé(e)');
+      } else if (err.code === err.TIMEOUT) {
+        setStatus("Délai dépassé pour te localiser · réessaie");
+      } else {
+        setStatus('Impossible de te localiser');
+      }
+    },
+    {timeout:10000, maximumAge:30000, enableHighAccuracy:true}
+  );
+}
+function applyPos(pos, acc) {
+  if (userMarker) map.removeLayer(userMarker);
+  if (userCircle) map.removeLayer(userCircle);
+  userCircle = L.circle(pos, {radius:Math.min(acc||300,1500), color:'#378ADD', fillColor:'#85B7EB', fillOpacity:0.12, weight:1}).addTo(map);
+  userMarker = L.marker(pos, {icon:mkUserIcon(), zIndexOffset:1000}).addTo(map);
+  userMarker.bindTooltip('Vous êtes ici', {permanent:false, direction:'top'});
+  map.setView(pos, 11);
+  document.getElementById('btn-geoloc').classList.add('active');
+  const sorted = [...getAires()].map(a => ({...a, dist:haversine(pos[0],pos[1],a.lat,a.lng)})).sort((a,b)=>a.dist-b.dist).slice(0,4);
+  document.getElementById('nearby-title').textContent = 'Aires les plus proches de vous';
+  document.getElementById('nearby-items').innerHTML = sorted.length === 0
+    ? '<div style="padding:12px 16px;font-size:13px;color:#888">Aucune aire chargée pour le moment. Réessaie "Charger les données OpenStreetMap".</div>'
+    : sorted.map(a =>
+        `<div class="nitem" onclick='openDetail(${JSON.stringify(a)})'><div><div class="nname">${a.nom}</div><div class="nmeta">${a.km||''}</div></div><div class="ndist">${distLabel(a.dist)}</div></div>`
+      ).join('');
+  document.getElementById('nearby-drawer').classList.add('visible');
+  document.getElementById('nearby-drawer').classList.remove('collapsed');
+  setStatus('Votre position · Aires proches affichées');
+}
+
+// ── Trajet ──
+function geocode(name) {
+  const k = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+  for (const [city, coords] of Object.entries(CITIES)) {
+    const ck = city.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    if (k === ck || k.startsWith(ck) || ck.startsWith(k)) return coords;
+  }
+  return null;
+}
+
+// Calcule un vrai itinéraire routier via OSRM (serveur de démo public, gratuit, sans clé)
+async function fetchRoute(from, to) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch(url, {signal: ctrl.signal});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data.routes || !data.routes.length) throw new Error('Aucun itinéraire trouvé');
+    // OSRM renvoie [lon,lat] → on convertit en [lat,lon] pour Leaflet
+    return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Distance (km) entre une aire et le tracé réel (échantillonné pour rester rapide)
+function distToRoute(aire, sampledCoords) {
+  let min = Infinity;
+  for (const [lat, lng] of sampledCoords) {
+    const d = haversine(aire.lat, aire.lng, lat, lng);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+async function doTrajet() {
+  const dep = document.getElementById('inp-dep').value.trim();
+  const arr = document.getElementById('inp-arr').value.trim();
+  const from = geocode(dep), to = geocode(arr);
+  if (!from) { setStatus('Départ non reconnu : ' + dep); return; }
+  if (!to) { setStatus('Arrivée non reconnue : ' + arr); return; }
+
+  const btnGo = document.getElementById('btn-go');
+  btnGo.disabled = true; btnGo.textContent = "⏳ Calcul de l'itinéraire…";
+  setStatus("Calcul de l'itinéraire " + dep + ' → ' + arr + '…');
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+
+  let routeCoords = null;
+  try {
+    routeCoords = await fetchRoute(from, to);
+  } catch (e) {
+    routeCoords = null;
+  }
+
+  let onRoute;
+  if (routeCoords) {
+    routeLine = L.polyline(routeCoords, {color:'#378ADD', weight:4, opacity:0.8}).addTo(map);
+    const sampled = routeCoords.filter((_, i) => i % 3 === 0);
+    onRoute = getAires().filter(a => distToRoute(a, sampled) <= 5);
+    map.fitBounds(routeLine.getBounds().pad(0.1));
+  } else {
+    // Repli : ligne à vol d'oiseau si le calcul d'itinéraire réel a échoué
+    routeLine = L.polyline([from, to], {color:'#378ADD', weight:3, dashArray:'8 5', opacity:0.7}).addTo(map);
+    const latMin = Math.min(from[0],to[0]) - 0.8;
+    const latMax = Math.max(from[0],to[0]) + 0.8;
+    const lngMin = Math.min(from[1],to[1]) - 0.8;
+    const lngMax = Math.max(from[1],to[1]) + 0.8;
+    onRoute = getAires().filter(a => a.lat>=latMin && a.lat<=latMax && a.lng>=lngMin && a.lng<=lngMax);
+    map.fitBounds(L.latLngBounds([from, to]).pad(0.2));
+  }
+
+  document.getElementById('nearby-title').textContent = onRoute.length + ' aire(s) sur ' + dep + ' → ' + arr;
+  document.getElementById('nearby-items').innerHTML = onRoute.length === 0
+    ? '<div style="padding:12px 16px;font-size:13px;color:#888">Aucune aire sur ce trajet. Vérifie que les données OpenStreetMap sont bien chargées (bouton en bas).</div>'
+    : onRoute.map(a => `<div class="nitem" onclick='openDetail(${JSON.stringify(a)})'><div><div class="nname">${a.nom}</div><div class="nmeta">${a.km||''}</div></div><div class="ndist">${a.note ? a.note+'/5' : ''}</div></div>`).join('');
+  document.getElementById('nearby-drawer').classList.add('visible');
+  document.getElementById('nearby-drawer').classList.remove('collapsed');
+  setStatus((routeCoords ? 'Trajet ' : 'Trajet (approx., itinéraire indisponible) ') + dep + ' → ' + arr + ' · ' + onRoute.length + ' aire(s)');
+  renderMarkers(onRoute);
+  btnGo.disabled = false; btnGo.textContent = 'Voir les aires sur ce trajet';
+}
+
+// ── Filtres ──
+function setFilter(btn) {
+  document.querySelectorAll('.fchip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = btn.dataset.f;
+  renderMarkers();
+}
+
+// ── Panel détail ──
+function openDetail(aire) {
+  currentAire = typeof aire === 'string' ? JSON.parse(aire) : aire;
+  document.getElementById('p-name').textContent = currentAire.nom;
+  document.getElementById('p-meta').textContent = (currentAire.km || '') + (currentAire.note ? ' · ' + currentAire.note + '/5' : '');
+  const starsHtml = currentAire.note
+    ? Array.from({length:5},(_,i) => `<span class="pstar${i>=Math.round(currentAire.note)?' e':''}">★</span>`).join('') + `<span style="font-size:12px;color:#888;margin-left:6px">${currentAire.note}/5</span>`
+    : '<span style="font-size:12px;color:#aaa">Pas encore de note</span>';
+  document.getElementById('p-stars').innerHTML = starsHtml;
+  const eq = currentAire.equip || {};
+  document.getElementById('p-equip').innerHTML = Object.keys(eq).length > 0
+    ? Object.entries(eq).map(([k,v]) => {
+        const l = EQUIP_LABELS[k]||k;
+        if (v==='ok') return `<span class="etag ok">${l}</span>`;
+        if (v==='nok') return `<span class="etag nok">${l} fermé</span>`;
+        return `<span class="etag unk">${l} ?</span>`;
+      }).join('')
+    : '<span style="font-size:12px;color:#aaa">Équipements non renseignés — soyez le premier à contribuer !</span>';
+
+  document.getElementById('detail-panel').classList.add('open');
+  document.getElementById('backdrop').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('open');
+}
+
+function closeBackdrop() {
+  // Ferme seulement le panel visible le plus haut
+  const contribOpen = document.getElementById('contrib-sheet').classList.contains('open');
+  if (contribOpen) {
+    closeContrib();
+  } else {
+    closeDetail();
+  }
+}
+
+// ── Contribution ──
+function openContrib() {
+  if (!currentAire) return;
+  // Fermer detail d'abord
+  document.getElementById('detail-panel').classList.remove('open');
+
+  document.getElementById('c-title').textContent = currentAire.nom;
+  contribStates = Object.keys(currentAire.equip||{}).length > 0 ? {...currentAire.equip} : {restaurant:'unk', animaux:'unk', enfants:'unk', pmr:'unk', douches:'unk'};
+  starRating = 0;
+  renderCChips();
+  renderAddChips();
+  document.querySelectorAll('.csstar').forEach(s => s.classList.remove('on'));
+  document.getElementById('cph1').className = 'cslot';
+  document.getElementById('cph1').textContent = '📷';
+  document.getElementById('cph2').className = 'cslot';
+  document.getElementById('cph2').textContent = '＋';
+  showStep(1);
+
+  document.getElementById('contrib-sheet').classList.add('open');
+  document.getElementById('backdrop').classList.add('open');
+}
+
+function closeContrib() {
+  document.getElementById('contrib-sheet').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('open');
+}
+
+function showStep(n) {
+  ['cs1','cs2','cs3','cs4'].forEach(id => document.getElementById(id).classList.remove('open'));
+  document.getElementById('cs'+n).classList.add('open');
+}
+
+function renderCChips() {
+  document.getElementById('c-chips').innerHTML = Object.entries(contribStates).map(([k,v]) => {
+    const l = EQUIP_LABELS[k]||k;
+    let cls='cchip', txt=l+' ?';
+    if(v==='ok'){cls='cchip conf';txt=l;}
+    else if(v==='nok'){cls='cchip brok';txt=l+' fermé';}
+    return `<button class="${cls}" onclick="cycleChip('${k}')">${txt}</button>`;
+  }).join('');
+}
+
+function cycleChip(k) {
+  contribStates[k] = contribStates[k]==='unk'?'ok':contribStates[k]==='ok'?'nok':'unk';
+  renderCChips();
+}
+
+function renderAddChips() {
+  const avail = ADD_EQUIP.filter(e => !Object.keys(contribStates).includes(e));
+  document.getElementById('c-addchips').innerHTML =
+    avail.map(e => `<button class="cchip add" onclick="addEquip('${e}')">${EQUIP_LABELS[e]} ＋</button>`).join('') +
+    `<button class="cchip add">Autre… ＋</button>`;
+}
+
+function addEquip(k) {
+  contribStates[k] = 'ok';
+  renderCChips();
+  renderAddChips();
+}
+
+function setStar(v) {
+  starRating = v;
+  document.querySelectorAll('.csstar').forEach(s => s.classList.toggle('on', parseInt(s.dataset.v)<=v));
+}
+
+function submitContrib() {
+  if (currentAire) {
+    // Mettre à jour dans le tableau local des aires réelles
+    const idx = osmAires.findIndex(a => a.id === currentAire.id);
+    if (idx > -1) osmAires[idx].equip = {...contribStates};
+    currentAire.equip = {...contribStates};
+  }
+  showStep(4);
+  setTimeout(() => { closeContrib(); renderMarkers(); }, 2000);
+}
+
+// ── OSM ──
+// Mappe un tag OSM d'équipement à proximité vers une clé équipement de l'app
+function tagToEquip(tags) {
+  if (!tags) return null;
+  if (tags.amenity === 'restaurant' || tags.amenity === 'fast_food') return 'restaurant';
+  if (tags.amenity === 'playground') return 'enfants';
+  if (tags.amenity === 'toilets' && tags.wheelchair === 'yes') return 'pmr';
+  if (tags.shower === 'yes') return 'douches';
+  if (tags.drinking_water === 'yes') return 'eau';
+  if (tags.internet_access && tags.internet_access !== 'no') return 'wifi';
+  return null;
+}
+
+const OVERPASS_ENDPOINTS = [
+  'https://overpass.openstreetmap.fr/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.openstreetmap.ru/api/interpreter'
+];
+
+async function overpassFetch(query, timeoutMs) {
+  let lastErr;
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST', body: 'data=' + encodeURIComponent(query), signal: ctrl.signal
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      lastErr = e;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  throw lastErr || new Error('Tous les serveurs Overpass ont échoué');
+}
+
+function aireFromElement(n, i) {
+  const lat = n.lat ?? n.center?.lat, lng = n.lon ?? n.center?.lon;
+  return {
+    id: 1000 + i, nom: n.tags?.name || (n.tags?.ref ? 'Aire ' + n.tags.ref : 'Aire sans nom'),
+    lat, lng,
+    km: n.tags?.highway === 'services' ? 'Aire de services' : 'Aire de repos',
+    note: null, equip: {}
+  };
+}
+
+// Requête simple et éprouvée : juste les aires, sans enrichissement (rapide, fiable)
+async function fetchAiresSimple() {
+  const q = `[out:json][timeout:40];node["highway"~"^(rest_area|services)$"](42.3,-4.9,51.1,8.2);out body;`;
+  const data = await overpassFetch(q, 45000);
+  const elements = data.elements || [];
+  if (!elements.length) throw new Error('Aucun résultat');
+  return elements.slice(0, 150).map(aireFromElement);
+}
+
+// Requête d'enrichissement : équipements à proximité (250m) des aires déjà chargées.
+// Best-effort : si ça échoue, les aires restent affichées sans équipements confirmés.
+async function fetchEquipEnrichment() {
+  const q = `[out:json][timeout:40];
+(
+  node["highway"~"^(rest_area|services)$"](42.3,-4.9,51.1,8.2);
+  way["highway"~"^(rest_area|services)$"](42.3,-4.9,51.1,8.2);
+)->.aires;
+(
+  node(around.aires:250)["amenity"~"^(restaurant|fast_food|toilets|playground)$"];
+  node(around.aires:250)["shower"="yes"];
+  node(around.aires:250)["drinking_water"="yes"];
+  node(around.aires:250)["internet_access"];
+);
+out center;`;
+  const data = await overpassFetch(q, 35000);
+  return data.elements || [];
+}
+
+function applyEquipEnrichment(equipEls) {
+  equipEls.forEach(eq => {
+    const eqLat = eq.lat ?? eq.center?.lat, eqLng = eq.lon ?? eq.center?.lon;
+    if (eqLat == null || eqLng == null) return;
+    const key = tagToEquip(eq.tags);
+    if (!key) return;
+    let nearest = null, nearestDist = Infinity;
+    osmAires.forEach(a => {
+      if (a.lat == null || a.lng == null) return;
+      const d = haversine(a.lat, a.lng, eqLat, eqLng) * 1000; // en mètres
+      if (d < nearestDist) { nearestDist = d; nearest = a; }
+    });
+    if (nearest && nearestDist <= 300) {
+      nearest.equip[key] = 'ok'; // confirmé, car présent sur OpenStreetMap
+    }
+  });
+}
+
+async function loadOSM(isInitial) {
+  const btn = document.getElementById('btn-osm');
+  btn.disabled = true; btn.textContent = '⏳ Rafraîchissement…';
+  setStatus('Interrogation OpenStreetMap pour des données à jour…');
+
+  let aires = null;
+  let lastErrMsg = '';
+  try {
+    aires = await fetchAiresSimple();
+  } catch (e) {
+    aires = null;
+    lastErrMsg = (e && e.message) ? e.message : (e && e.name) ? e.name : String(e);
+  }
+
+  if (aires) {
+    osmAires = aires;
+    renderMarkers(osmAires);
+    setStatus(aires.length + ' aires réelles · OSM · équipements en cours d\u2019enrichissement…');
+    btn.textContent = '✓ Données OSM à jour'; btn.classList.add('loaded'); btn.disabled = false;
+    document.getElementById('nearby-drawer').classList.remove('visible');
+
+    // Enrichissement en tâche de fond, ne bloque jamais l'affichage des aires
+    fetchEquipEnrichment().then(equipEls => {
+      applyEquipEnrichment(equipEls);
+      renderMarkers(osmAires);
+      setStatus(osmAires.length + ' aires réelles · OSM · équipements enrichis');
+    }).catch(() => {
+      setStatus(osmAires.length + ' aires réelles · OSM (équipements non enrichis)');
+    });
+  } else {
+    // Échec du rafraîchissement : on garde le jeu de données déjà affiché (embarqué ou précédent), on ne l'efface jamais
+    setStatus(osmAires.length + ' aires (données existantes conservées) · rafraîchissement échoué : ' + (lastErrMsg || 'erreur inconnue'));
+    btn.disabled = false; btn.textContent = '↻ Rafraîchir depuis OpenStreetMap (optionnel)';
+  }
+}
+
+// ── Wiring boutons (sans inline onclick pour éviter les conflits) ──
+document.getElementById('btn-maps').addEventListener('click', () => {
+  if (!currentAire) return;
+  window.open('https://maps.google.com/?q='+currentAire.lat+','+currentAire.lng, '_blank');
+});
+document.getElementById('nearby-header').addEventListener('click', () => {
+  document.getElementById('nearby-drawer').classList.toggle('collapsed');
+});
+document.getElementById('btn-contrib').addEventListener('click', openContrib);
+document.getElementById('c-close').addEventListener('click', closeContrib);
+document.getElementById('cs1-cancel').addEventListener('click', closeContrib);
+document.getElementById('cs1-next').addEventListener('click', () => showStep(2));
+document.getElementById('cs2-back').addEventListener('click', () => showStep(1));
+document.getElementById('cs2-next').addEventListener('click', () => showStep(3));
+document.getElementById('cs3-back').addEventListener('click', () => showStep(2));
+document.getElementById('cs3-send').addEventListener('click', submitContrib);
+document.querySelectorAll('.csstar').forEach(s => s.addEventListener('click', () => setStar(parseInt(s.dataset.v))));
+document.getElementById('cph1').addEventListener('click', function() {
+  this.classList.toggle('filled');
+  this.textContent = this.classList.contains('filled') ? '✓' : '📷';
+});
+document.getElementById('cph2').addEventListener('click', function() {
+  this.classList.toggle('filled');
+  this.textContent = this.classList.contains('filled') ? '✓' : '＋';
+});
+
+// ── Init ──
+renderMarkers(osmAires);
+setStatus(osmAires.length + ' aires réelles (France) · données embarquées');
+</script>
+</body>
+</html>
