@@ -46,7 +46,13 @@ Si le nom ou les équipements détectés sont faux/vides, ajuste dans
   `crawl_hub_pages` dans `adapters/base.py`. vinci-autoroutes.com n'a pas
   de `/sitemap.xml` fonctionnel (confirmé 404 le 2026-07), d'où ce
   mécanisme à la place d'un sitemap.)
-- `EQUIP_SYNONYMS` (mots-clés français par équipement)
+- `EQUIP_SYNONYMS` (mots-clés français par équipement). Deux cas
+  particuliers réglés selon la connaissance du réseau Vinci/APRR par
+  l'utilisateur : `pmr` ne se déclenche que sur "fauteuil roulant" (les
+  sanitaires PMR/parking prioritaire étant déjà quasi-systématiques sur ce
+  réseau, les détecter ne donnerait aucun signal utile) ; `animaux` se
+  déclenche sur "espace canin" (le vocabulaire réel du site), pas sur le
+  mot "animaux" lui-même.
 - au besoin, la logique de `BaseAdapter.parse()` dans `adapters/base.py`
   (sélecteurs CSS spécifiques si le site a une structure HTML stable
   plutôt que du texte libre)

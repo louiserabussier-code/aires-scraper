@@ -26,9 +26,16 @@ from .base import BaseAdapter
 
 EQUIP_SYNONYMS = {
     "restaurant": ["restaurant", "restauration", "brasserie", "fast-food", "fast food"],
-    "animaux": ["espace canin", "aire pour chiens", "animaux acceptes", "espace animalier"],
+    # Per user's domain knowledge of this network: the real wording is
+    # "espace canin", not "animaux" - dropped synonyms that used the latter.
+    "animaux": ["espace canin", "aire pour chiens"],
     "enfants": ["aire de jeux", "espace enfants", "jeux pour enfants"],
-    "pmr": ["pmr", "acces pmr", "accessible pmr", "personnes a mobilite reduite"],
+    # PMR-accessible toilets + priority parking are near-universal on this
+    # network's aires by law/default, so generic "accessible PMR" wording
+    # would be true almost everywhere and carries no real signal. Only a
+    # specific loanable-wheelchair mention is an actual variable extra -
+    # per user's domain knowledge, that's what "pmr":"ok" should mean here.
+    "pmr": ["fauteuil roulant"],
     "douches": ["douche", "douches"],
     "eau": ["point d'eau", "eau potable", "borne d'eau"],
     "wifi": ["wifi", "wi-fi"],

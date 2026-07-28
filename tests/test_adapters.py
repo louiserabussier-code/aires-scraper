@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from scraper.adapters.vinci import VinciAdapter
+from scraper.adapters.base import extract_keyword_equipment
+from scraper.adapters.vinci import EQUIP_SYNONYMS, VinciAdapter
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -49,6 +50,29 @@ def test_parse_jsonld_wrapped_in_at_graph_is_still_read():
     assert parsed.lng == 0.96
     assert parsed.equip["restaurant"] == "ok"
     assert parsed.equip["douches"] == "nok"
+
+
+def test_parse_pmr_and_animaux_use_network_specific_vocabulary():
+    # Per the user's domain knowledge of this network: PMR-accessible
+    # toilets/parking are near-universal by default (no signal), so "pmr"
+    # should only fire on a specific loanable-wheelchair mention; the real
+    # wording for a dog area is "espace canin", not "animaux".
+    html = (FIXTURES / "synthetic_pmr_animaux_page.html").read_text(encoding="utf-8")
+    adapter = VinciAdapter()
+    parsed = adapter.parse(html, "https://example.test/aire-de-test-pmr")
+
+    assert parsed.equip["pmr"] == "ok"
+    assert parsed.equip["animaux"] == "ok"
+
+
+def test_generic_pmr_and_animaux_wording_no_longer_matches():
+    # "accessible PMR" and "animaux acceptes" alone (without "fauteuil
+    # roulant" / "espace canin") must NOT set pmr/animaux - that generic
+    # wording used to be in the synonym list and caused false "ok"s.
+    text = "Sanitaires accessibles PMR et parking prioritaire. Les animaux sont acceptes sur le parking."
+    equip = extract_keyword_equipment(text, EQUIP_SYNONYMS)
+    assert "pmr" not in equip
+    assert "animaux" not in equip
 
 
 def test_parse_finds_equipment_conveyed_via_icon_alt_text():
