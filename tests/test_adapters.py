@@ -38,6 +38,19 @@ def test_parse_returns_none_without_a_name():
     assert parsed is None
 
 
+def test_parse_jsonld_wrapped_in_at_graph_is_still_read():
+    # Real vinci-autoroutes.com pages wrap JSON-LD nodes in a top-level
+    # {"@context":..,"@graph":[...]} rather than a bare object/array.
+    html = (FIXTURES / "synthetic_graph_jsonld_page.html").read_text(encoding="utf-8")
+    adapter = VinciAdapter()
+    parsed = adapter.parse(html, "https://example.test/aire-de-test")
+
+    assert parsed.lat == 47.5
+    assert parsed.lng == 0.96
+    assert parsed.equip["restaurant"] == "ok"
+    assert parsed.equip["douches"] == "nok"
+
+
 def test_parse_finds_equipment_conveyed_via_icon_alt_text():
     # Real pages often list amenities as icons (<img alt="Restaurant">)
     # rather than flowing sentences - get_text() alone misses these.

@@ -1,0 +1,32 @@
+<!-- Synthetic fixture authored for tests only - not scraped content.
+     Mirrors the real @graph-wrapped JSON-LD pattern found on
+     vinci-autoroutes.com (schema.org @graph convention), which the
+     extractor originally missed entirely (only handled a bare object or
+     a bare top-level array, not {"@context":..,"@graph":[...]}). -->
+<!DOCTYPE html>
+<html>
+<head>
+<title>Aire de Test</title>
+<script type="application/ld+json" data-gatsby-head="true">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type": "Organization", "name": "VINCI Autoroutes"},
+    {
+      "@type": "Place",
+      "name": "Aire de Test - A10",
+      "geo": {"@type": "GeoCoordinates", "latitude": 47.5, "longitude": 0.96},
+      "amenityFeature": [
+        {"@type": "LocationFeatureSpecification", "name": "Restauration", "value": true},
+        {"@type": "LocationFeatureSpecification", "name": "Aire camping car", "value": true},
+        {"@type": "LocationFeatureSpecification", "name": "Douches", "value": false}
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<h1>Aire de Test</h1>
+</body>
+</html>

@@ -145,6 +145,21 @@ def crawl_hub_pages(
                 yield leaf_url
 
 
+def _flatten_jsonld_nodes(data) -> list[dict]:
+    """Real pages often wrap nodes in a top-level {"@graph": [...]} (schema.org
+    graph convention) rather than a bare list - descend into it too."""
+    nodes: list[dict] = []
+    if isinstance(data, list):
+        for item in data:
+            nodes.extend(_flatten_jsonld_nodes(item))
+    elif isinstance(data, dict):
+        nodes.append(data)
+        graph = data.get("@graph")
+        if graph:
+            nodes.extend(_flatten_jsonld_nodes(graph))
+    return nodes
+
+
 def extract_jsonld_amenities(soup: BeautifulSoup, synonyms: dict) -> tuple[dict, float | None, float | None]:
     """Look for schema.org amenityFeature / geo in any JSON-LD block."""
     equip: dict = {}
@@ -155,10 +170,7 @@ def extract_jsonld_amenities(soup: BeautifulSoup, synonyms: dict) -> tuple[dict,
             data = json.loads(script.string or "")
         except (json.JSONDecodeError, TypeError):
             continue
-        candidates = data if isinstance(data, list) else [data]
-        for node in candidates:
-            if not isinstance(node, dict):
-                continue
+        for node in _flatten_jsonld_nodes(data):
             geo = node.get("geo")
             if isinstance(geo, dict):
                 lat = lat or geo.get("latitude")
