@@ -25,6 +25,7 @@ import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Iterable, Iterator
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
@@ -87,6 +88,61 @@ def iter_sitemap_urls(http: PoliteSession, sitemap_url: str, url_pattern: re.Pat
         for loc in locs:
             if url_pattern.search(loc):
                 yield loc
+
+
+def _extract_matching_links(soup: BeautifulSoup, base_url: str, pattern: re.Pattern) -> Iterator[str]:
+    seen: set[str] = set()
+    for a in soup.find_all("a", href=True):
+        href = urljoin(base_url, a["href"]).split("#")[0]
+        if pattern.match(href) and href not in seen:
+            seen.add(href)
+            yield href
+
+
+def crawl_hub_pages(
+    http: PoliteSession,
+    root_url: str,
+    hub_pattern: re.Pattern,
+    leaf_pattern: re.Pattern,
+) -> Iterator[str]:
+    """Discovery for sites with no usable sitemap: fetch a root listing page
+    (e.g. /aires-et-services/), follow the links that look like one-per-
+    highway hub pages (hub_pattern), then yield the aire-page links found on
+    each hub page (leaf_pattern). Two levels deep, no further recursion."""
+    try:
+        resp = http.get(root_url)
+    except RobotsDisallowed:
+        log.warning("robots.txt disallows root %s -> cannot discover via hub pages", root_url)
+        return
+    if resp.status_code != 200:
+        log.warning("hub root %s returned %s", root_url, resp.status_code)
+        return
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    hub_urls = list(_extract_matching_links(soup, root_url, hub_pattern))
+    if not hub_urls:
+        log.warning(
+            "no hub links matching pattern found on %s -> hub_pattern likely needs adjusting",
+            root_url,
+        )
+        return
+    log.info("found %d hub page(s) from %s", len(hub_urls), root_url)
+
+    seen_leaves: set[str] = set()
+    for hub_url in hub_urls:
+        try:
+            hub_resp = http.get(hub_url)
+        except RobotsDisallowed:
+            log.warning("robots.txt disallows hub %s -> skipping", hub_url)
+            continue
+        if hub_resp.status_code != 200:
+            log.warning("hub %s returned %s", hub_url, hub_resp.status_code)
+            continue
+        hub_soup = BeautifulSoup(hub_resp.text, "lxml")
+        for leaf_url in _extract_matching_links(hub_soup, hub_url, leaf_pattern):
+            if leaf_url not in seen_leaves:
+                seen_leaves.add(leaf_url)
+                yield leaf_url
 
 
 def extract_jsonld_amenities(soup: BeautifulSoup, synonyms: dict) -> tuple[dict, float | None, float | None]:
@@ -155,11 +211,20 @@ class BaseAdapter:
     label: str = ""
     base_url: str = ""
     sitemap_url: str = ""
+    # Hub-page discovery (preferred when the site has no working sitemap):
+    # root_url lists hub pages (e.g. one per highway), hub_pattern matches
+    # those, and url_pattern (below) matches the actual aire pages found on
+    # each hub page.
+    root_url: str = ""
+    hub_pattern: re.Pattern | None = None
     url_pattern: re.Pattern = re.compile(r"aire", re.I)
     equip_synonyms: dict = field(default_factory=dict)
 
     def discover(self, http: PoliteSession) -> Iterable[str]:
-        return iter_sitemap_urls(http, self.sitemap_url, self.url_pattern)
+        if self.root_url and self.hub_pattern:
+            yield from crawl_hub_pages(http, self.root_url, self.hub_pattern, self.url_pattern)
+            return
+        yield from iter_sitemap_urls(http, self.sitemap_url, self.url_pattern)
 
     def parse(self, html: str, url: str) -> ParsedAire | None:
         soup = BeautifulSoup(html, "lxml")

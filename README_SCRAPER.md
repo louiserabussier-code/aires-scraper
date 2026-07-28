@@ -39,11 +39,22 @@ python run_scraper.py probe --operator vinci --urls https://www.vinci-autoroutes
 
 Si le nom ou les équipements détectés sont faux/vides, ajuste dans
 `scraper/adapters/vinci.py` :
-- `sitemap_url` / `url_pattern` (découverte des pages d'aires)
+- `root_url` / `hub_pattern` / `url_pattern` (découverte en deux temps :
+  une page racine `/fr/aires-et-services/` qui liste un lien "hub" par
+  autoroute, puis chaque hub qui liste ses pages d'aires - voir
+  `crawl_hub_pages` dans `adapters/base.py`. vinci-autoroutes.com n'a pas
+  de `/sitemap.xml` fonctionnel (confirmé 404 le 2026-07), d'où ce
+  mécanisme à la place d'un sitemap.)
 - `EQUIP_SYNONYMS` (mots-clés français par équipement)
 - au besoin, la logique de `BaseAdapter.parse()` dans `adapters/base.py`
   (sélecteurs CSS spécifiques si le site a une structure HTML stable
   plutôt que du texte libre)
+
+Si `probe` affiche `no hub links matching pattern found on .../aires-et-
+services/`, c'est que la page racine ne liste pas les autoroutes de la
+façon supposée (un lien par autoroute en un seul segment de chemin) :
+lance `probe --operator vinci --urls <url racine>` ou partage le HTML de
+cette page pour recalibrer `hub_pattern`.
 
 ## Étape 2 — vérifier APRR/AREA avant de s'engager
 
