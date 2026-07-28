@@ -35,6 +35,7 @@ affiche ce qui a été détecté, sans rien écrire sur disque :
 ```bash
 python run_scraper.py probe --operator vinci --limit 5
 python run_scraper.py probe --operator vinci --urls https://www.vinci-autoroutes.com/aire-de-xxx
+python run_scraper.py probe --operator vinci --urls <url> --save-html /tmp/probe_html  # dump raw HTML for review
 ```
 
 Si le nom ou les équipements détectés sont faux/vides, ajuste dans
@@ -120,12 +121,55 @@ Les entrées de plusieurs opérateurs pour la même aire ne sont **pas
 fusionnées** entre elles (pour ne pas masquer un conflit ou décider à ta
 place) : à toi de trancher lors de l'intégration dans `index.html`.
 
+## Aires manquantes de STATIC_AIRES
+
+Vinci publie de vraies coordonnées GPS (via JSON-LD `geo`) pour ses aires,
+contrairement à `STATIC_AIRES` qui n'en a pas toujours (ex. "Aire sans
+nom"). Quand une aire scrapée ne correspond à aucune entrée existante (ni
+par nom+distance, ni par nom seul), au lieu de simplement la journaler
+comme "non trouvée", le script la propose comme **nouvelle entrée** dans
+`output/new_aires_<operator>.json` :
+
+```json
+{
+  "nom_aire": "Aire de La Picardière",
+  "id": null,
+  "status": "new_candidate",
+  "lat": 47.535025308926,
+  "lng": 0.96258012533176,
+  "equip": {},
+  "equip_source": "vinci",
+  "equip_date": "2026-07",
+  "source_url": "https://www.vinci-autoroutes.com/fr/aires-et-services/a10/aire-de-la-picardiere/",
+  "extraction_method": "none"
+}
+```
+
+- `id: null` volontairement : c'est à toi de lui attribuer un id (et de
+  remplir `km`, la catégorie "Aire de repos"/"Aire de services" - le
+  script ne l'invente pas) en l'ajoutant à `STATIC_AIRES`.
+- Ceci nécessite des coordonnées scrapées (sinon impossible de proposer une
+  entrée géolocalisée) : sans lat/lng, le cas reste journalisé comme
+  "not found" classique.
+- Les candidats déjà proposés dans un run précédent (même resumé après
+  interruption) sont rechargés au démarrage et comparés aux nouveaux via le
+  même matching flou nom+distance, pour ne pas proposer deux fois la même
+  aire manquante si une deuxième URL y mène (ex. sens opposé de
+  l'autoroute) - journalisé dans `logs/<op>_not_found.log` comme
+  `duplicate of already-proposed new aire`.
+- Ce dédoublonnage reste **par opérateur** : si vinci et sanef proposaient
+  chacun la même aire manquante (frontière de réseau, cas rare), tu verrais
+  deux candidats séparés - à trancher lors de l'intégration, comme pour les
+  conflits d'équipements entre opérateurs.
+
 ## Logs de progression
 
 - `logs/<operator>_found.log` — URL → aire correspondante + confiance
 - `logs/<operator>_not_found.log` — URL → raison (robots interdit, pas de
   nom trouvé, pas d'équipement détecté, pas de correspondance dans
-  `STATIC_AIRES`...)
+  `STATIC_AIRES`, doublon d'un candidat déjà proposé...)
+- `logs/<operator>_new_candidates.log` — URL → nom + coordonnées proposées
+  comme nouvelle aire
 
 ## Tests
 

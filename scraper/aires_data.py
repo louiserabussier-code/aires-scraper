@@ -17,7 +17,10 @@ _UNQUOTED_KEY_RE = re.compile(r"([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)")
 
 @dataclass
 class Aire:
-    id: int
+    # id is None for a synthetic candidate representing a not-yet-integrated
+    # "new aire" proposal (see output.load_new_aire_candidates) - it isn't a
+    # real STATIC_AIRES row (yet).
+    id: int | None
     nom: str
     lat: float
     lng: float

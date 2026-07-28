@@ -1,4 +1,7 @@
-"""Writes the review JSON: one entry per (operator, matched aire).
+"""Writes the review JSON: one entry per (operator, matched aire), plus a
+separate file of "new aire" candidates - real aires found on an operator
+site with no match in STATIC_AIRES, proposed with their real scraped
+coordinates rather than silently dropped as not-found.
 
 Never touches index.html. Entries from different operators for the same
 aire are kept side by side (not merged) so provenance stays visible and
@@ -8,6 +11,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from .aires_data import Aire
 
 
 def append_entry(entries_path: str | Path, entry: dict) -> None:
@@ -62,3 +67,61 @@ def make_entry(
         "distance_km": round(distance_km, 3) if distance_km is not None else None,
         "extraction_method": extraction_method,
     }
+
+
+def make_new_aire_entry(
+    *,
+    nom_aire: str,
+    lat: float,
+    lng: float,
+    equip: dict,
+    equip_source: str,
+    equip_date: str,
+    source_url: str,
+    extraction_method: str,
+) -> dict:
+    """An aire found on an operator site with no match in STATIC_AIRES -
+    proposed as a brand new entry rather than dropped. No `id`: the user
+    assigns one when integrating it into index.html. `km` (the aire-type
+    category in STATIC_AIRES, e.g. "Aire de repos") is intentionally left
+    out - we have no reliable way to infer it here."""
+    return {
+        "nom_aire": nom_aire,
+        "id": None,
+        "status": "new_candidate",
+        "lat": lat,
+        "lng": lng,
+        "equip": equip,
+        "equip_source": equip_source,
+        "equip_date": equip_date,
+        "source_url": source_url,
+        "extraction_method": extraction_method,
+    }
+
+
+def load_new_aire_candidates(entries_path: str | Path) -> list[Aire]:
+    """Reload previously proposed new-aire candidates (from earlier
+    invocations of the same operator's run) as synthetic Aire objects
+    (id=None) so a resumed run doesn't propose the same gap twice."""
+    path = Path(entries_path)
+    if not path.exists():
+        return []
+    candidates = []
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            candidates.append(
+                Aire(
+                    id=None,
+                    nom=entry["nom_aire"],
+                    lat=entry["lat"],
+                    lng=entry["lng"],
+                    km=None,
+                    note=None,
+                    equip=entry.get("equip") or {},
+                )
+            )
+    return candidates

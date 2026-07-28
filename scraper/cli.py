@@ -21,10 +21,10 @@ from pathlib import Path
 
 from . import config
 from .adapters import ADAPTERS
-from .aires_data import load_aires
+from .aires_data import Aire, load_aires
 from .http import PoliteSession, RobotsDisallowed
 from .matching import find_match
-from .output import append_entry, compile_json, make_entry
+from .output import append_entry, compile_json, load_new_aire_candidates, make_entry, make_new_aire_entry
 from .state import RunState
 
 log = logging.getLogger("scraper.cli")
@@ -104,7 +104,14 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     output_dir = Path(args.output_dir)
     entries_path = output_dir / f"enrichment_{args.operator}.jsonl"
+    new_entries_path = output_dir / f"new_aires_{args.operator}.jsonl"
     equip_date = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    # Candidates to match against: existing STATIC_AIRES plus any new-aire
+    # candidates already proposed in a previous (possibly interrupted) run of
+    # this operator, so we don't propose the same gap twice. New ones found
+    # this run are appended here too, so later URLs in the same run see them.
+    candidates = aires + load_new_aire_candidates(new_entries_path)
 
     processed_this_run = 0
     for url in adapter.discover(http):
@@ -127,13 +134,44 @@ def cmd_run(args: argparse.Namespace) -> None:
         if parsed is None:
             state.log_not_found(url, "no name extracted from page")
             continue
-        if not parsed.equip:
-            state.log_not_found(url, f"no equipment facts extracted for {parsed.name!r}")
+
+        match = find_match(parsed.name, parsed.lat, parsed.lng, candidates)
+
+        if match.aire is None:
+            if parsed.lat is not None and parsed.lng is not None:
+                new_entry = make_new_aire_entry(
+                    nom_aire=parsed.name,
+                    lat=parsed.lat,
+                    lng=parsed.lng,
+                    equip=parsed.equip,
+                    equip_source=args.operator,
+                    equip_date=equip_date,
+                    source_url=url,
+                    extraction_method=parsed.extraction_method,
+                )
+                append_entry(new_entries_path, new_entry)
+                candidates.append(
+                    Aire(id=None, nom=parsed.name, lat=parsed.lat, lng=parsed.lng, km=None, note=None, equip=parsed.equip)
+                )
+                state.log_new_candidate(url, parsed.name, parsed.lat, parsed.lng)
+            else:
+                state.log_not_found(
+                    url, f"no STATIC_AIRES match and no coordinates for {parsed.name!r}"
+                )
             continue
 
-        match = find_match(parsed.name, parsed.lat, parsed.lng, aires)
-        if match.aire is None:
-            state.log_not_found(url, f"no STATIC_AIRES match for {parsed.name!r}")
+        if match.aire.id is None:
+            # Matched a new-aire candidate already proposed earlier this run
+            # (or a resumed one) - nothing further to record.
+            state.log_not_found(
+                url, f"duplicate of already-proposed new aire {match.aire.nom!r}"
+            )
+            continue
+
+        if not parsed.equip:
+            state.log_not_found(
+                url, f"matched id={match.aire.id} {match.aire.nom!r} but no equipment facts extracted"
+            )
             continue
 
         entry = make_entry(
@@ -158,11 +196,15 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     output_json = output_dir / f"enrichment_{args.operator}.json"
     total = compile_json(entries_path, output_json)
+    new_output_json = output_dir / f"new_aires_{args.operator}.json"
+    total_new = compile_json(new_entries_path, new_output_json)
     print(
         f"\n{adapter.label}: {processed_this_run} URL(s) processed this run. "
-        f"Totals so far -> found: {state.counts['found']}, not found: {state.counts['not_found']}."
+        f"Totals so far -> found: {state.counts['found']}, not found: {state.counts['not_found']}, "
+        f"new candidates: {state.counts['new_candidate']}."
     )
     print(f"Review file written: {output_json} ({total} entries)")
+    print(f"New-aire candidates written: {new_output_json} ({total_new} entries)")
 
 
 def build_parser() -> argparse.ArgumentParser:
