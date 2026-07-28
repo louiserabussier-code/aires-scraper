@@ -82,3 +82,37 @@ def test_vinci_hub_pattern_rejects_leaf_urls_as_hubs():
     assert adapter.url_pattern.match(LEAF_REMOUILLE)
     assert not adapter.url_pattern.match(HUB_A83)
     assert not adapter.url_pattern.match(ROOT_URL)
+
+
+def test_vinci_hub_pattern_matches_real_hyphenated_highway_links():
+    # Real root page (2026-07): highway hub links are hyphenated
+    # ("autoroute-a10", not "a10"), and a first-cut hub_pattern of
+    # [a-z0-9]+ (no hyphen) silently excluded all 30 of them, matching
+    # only 13 coincidentally hyphen-free brand pages (mcdonalds, bp, wifi,
+    # ...) instead - explaining a real run that only reached ~218 aires.
+    adapter = VinciAdapter()
+    real_hub_links = [
+        "https://www.vinci-autoroutes.com/fr/aires-et-services/autoroute-a10/",
+        "https://www.vinci-autoroutes.com/fr/aires-et-services/autoroute-a83/",
+        "https://www.vinci-autoroutes.com/fr/aires-et-services/duplex-a86/",
+        "https://www.vinci-autoroutes.com/fr/aires-et-services/mcdonalds/",
+    ]
+    for url in real_hub_links:
+        assert adapter.hub_pattern.match(url), url
+
+
+def test_crawl_hub_pages_via_hyphenated_hub_link():
+    hub_url = "https://www.vinci-autoroutes.com/fr/aires-et-services/autoroute-a10/"
+    leaf = "https://www.vinci-autoroutes.com/fr/aires-et-services/a10/aire-de-poitou-charentes-nord/"
+    root_html = """
+    <html><body><a href="/fr/aires-et-services/autoroute-a10/">A10</a></body></html>
+    """
+    # The hub page links to the short-code leaf path, not a path relative
+    # to its own (long-form) URL.
+    hub_html = f'<html><body><a href="{leaf}">Aire de Poitou-Charentes Nord</a></body></html>'
+
+    http = FakeHttp({ROOT_URL: FakeResponse(200, root_html), hub_url: FakeResponse(200, hub_html)})
+    adapter = VinciAdapter()
+
+    leaves = list(crawl_hub_pages(http, ROOT_URL, adapter.hub_pattern, adapter.url_pattern))
+    assert leaves == [leaf]
