@@ -24,6 +24,16 @@ MAX_MATCH_DISTANCE_KM = 3.0
 NAME_SIMILARITY_REVIEW_THRESHOLD = 0.5
 MAX_MATCH_DISTANCE_REVIEW_KM = 6.0
 
+# Without any scraped coordinates, distance can't rule out a false positive
+# at all - character-level similarity between two unrelated French place
+# names is dangerously easy to fake (many "Saint-X ... Est/Ouest" style
+# names). Confirmed on real data: "Aire du Bourdoux" (Hautes-Alpes) vs a
+# scraped "Aire de Boutroux" scored 0.875 on name alone and would have been
+# accepted as a *high*-confidence match despite being ~570km apart. So a
+# name-only match is NEVER "high", and needs a much stricter bar than the
+# geo-backed thresholds above to be proposed even as "low".
+NAME_SIMILARITY_NO_COORDS_THRESHOLD = 0.9
+
 EQUIP_KEYS = ("restaurant", "animaux", "enfants", "pmr", "douches", "eau", "wifi")
 
 OPERATORS = {

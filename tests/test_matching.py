@@ -29,7 +29,19 @@ def test_find_match_no_coords_requires_near_exact_name():
     aires = load_aires(FIXTURE)
     result = find_match("Aire des Brouzils", None, None, aires)
     assert result.aire.id == 3003
-    assert result.confidence == "high"
+    # Never "high" without geography to back it up, however good the name
+    # match looks - see config.NAME_SIMILARITY_NO_COORDS_THRESHOLD.
+    assert result.confidence == "low"
+
+
+def test_find_match_no_coords_rejects_plausible_but_wrong_name():
+    # Real false positive found in production: a scraped "Aire de Boutroux"
+    # (A10, western France) fuzzy-matched an unrelated "Aire du Bourdoux"
+    # (Hautes-Alpes, ~570km away) at 0.875 name similarity - previously
+    # accepted as "high" confidence with no coordinates to catch it.
+    aires = load_aires(FIXTURE)
+    result = find_match("Aire de Remouille", None, None, aires)  # cf. Remouillé-Est/Ouest
+    assert result.aire is None
 
 
 def test_find_match_rejects_unrelated_far_away_name():

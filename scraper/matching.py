@@ -68,10 +68,11 @@ def find_match(
             else:
                 continue
         else:
-            # No coordinates scraped: only accept a near-exact name match.
-            if sim >= 0.85:
-                confidence = "high"
-            elif sim >= config.NAME_SIMILARITY_THRESHOLD:
+            # No coordinates scraped: geography can't back this up at all,
+            # so it's capped at "low" no matter how good the name match
+            # looks, and needs a much stricter bar to even qualify (see
+            # config.NAME_SIMILARITY_NO_COORDS_THRESHOLD).
+            if sim >= config.NAME_SIMILARITY_NO_COORDS_THRESHOLD:
                 confidence = "low"
             else:
                 continue
