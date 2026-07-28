@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,10 @@ from .output import append_entry, compile_json, make_entry
 from .state import RunState
 
 log = logging.getLogger("scraper.cli")
+
+
+def _slug_for_url(url: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]+", "_", url).strip("_")[:150] + ".html"
 
 
 def cmd_probe(args: argparse.Namespace) -> None:
@@ -57,6 +62,13 @@ def cmd_probe(args: argparse.Namespace) -> None:
         if resp.status_code != 200:
             print(f"  HTTP {resp.status_code}")
             continue
+
+        if args.save_html:
+            out_dir = Path(args.save_html)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            html_path = out_dir / _slug_for_url(url)
+            html_path.write_text(resp.text, encoding="utf-8")
+            print(f"  saved raw HTML -> {html_path}")
 
         parsed = adapter.parse(resp.text, url)
         if parsed is None:
@@ -127,6 +139,8 @@ def cmd_run(args: argparse.Namespace) -> None:
         entry = make_entry(
             nom_aire=match.aire.nom,
             aire_id=match.aire.id,
+            aire_lat=match.aire.lat,
+            aire_lng=match.aire.lng,
             equip=parsed.equip,
             equip_source=args.operator,
             equip_date=equip_date,
@@ -167,6 +181,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_probe.add_argument("--operator", required=True, choices=sorted(ADAPTERS))
     p_probe.add_argument("--limit", type=int, default=5)
     p_probe.add_argument("--urls", nargs="*", help="Specific URLs to probe instead of sitemap discovery")
+    p_probe.add_argument(
+        "--save-html", metavar="DIR", help="Save each probed page's raw HTML into DIR for inspection"
+    )
     p_probe.set_defaults(func=cmd_probe)
 
     p_run = sub.add_parser("run", help="Full resumable crawl for one operator")

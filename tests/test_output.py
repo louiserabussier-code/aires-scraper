@@ -8,6 +8,8 @@ def test_append_and_compile_roundtrip(tmp_path):
     entry = make_entry(
         nom_aire="Aire des Brouzils",
         aire_id=3003,
+        aire_lat=46.87924,
+        aire_lng=-1.28946,
         equip={"restaurant": "ok"},
         equip_source="vinci",
         equip_date="2026-07",
@@ -28,6 +30,8 @@ def test_append_and_compile_roundtrip(tmp_path):
     assert data[0]["nom_aire"] == "Aire des Brouzils"
     assert data[0]["equip_source"] == "vinci"
     assert data[0]["distance_km"] == 0.0
+    assert data[0]["lat"] == 46.87924
+    assert data[0]["lng"] == -1.28946
 
 
 def test_compile_json_missing_entries_file_gives_empty_list(tmp_path):

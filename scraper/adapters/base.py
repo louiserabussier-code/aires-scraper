@@ -201,9 +201,19 @@ def extract_keyword_equipment(visible_text: str, synonyms: dict) -> dict:
 
 
 def visible_text(soup: BeautifulSoup) -> str:
+    """Flowing text plus alt/aria-label/title attributes (as separate
+    pseudo-sentences), since equipment lists are often icon-based (e.g.
+    <img alt="Restaurant">) rather than plain sentences - get_text() alone
+    misses those entirely."""
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
-    return soup.get_text(separator=" ", strip=True)
+    parts = [soup.get_text(separator=" ", strip=True)]
+    for attr in ("alt", "aria-label", "title"):
+        for tag in soup.find_all(attrs={attr: True}):
+            value = tag.get(attr, "").strip()
+            if value:
+                parts.append(value)
+    return ". ".join(parts)
 
 
 class BaseAdapter:
@@ -238,12 +248,22 @@ class BaseAdapter:
             log.warning("no name found on %s -> skipping", url)
             return None
 
-        equip, lat, lng = extract_jsonld_amenities(soup, self.equip_synonyms)
-        method = "jsonld" if equip else "none"
+        jsonld_equip, lat, lng = extract_jsonld_amenities(soup, self.equip_synonyms)
+        keyword_equip = extract_keyword_equipment(visible_text(soup), self.equip_synonyms)
 
-        if not equip:
-            equip = extract_keyword_equipment(visible_text(soup), self.equip_synonyms)
-            method = "keyword" if equip else "none"
+        # JSON-LD wins per-key when both extracted something for it (it's
+        # structured data vs. a heuristic), but a page rarely has JSON-LD for
+        # every amenity - merge instead of picking one method for the whole
+        # page, so keyword-derived facts fill the gaps.
+        equip = {**keyword_equip, **jsonld_equip}
+        if jsonld_equip and keyword_equip:
+            method = "mixed"
+        elif jsonld_equip:
+            method = "jsonld"
+        elif keyword_equip:
+            method = "keyword"
+        else:
+            method = "none"
 
         return ParsedAire(
             name=name,

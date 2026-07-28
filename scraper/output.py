@@ -35,6 +35,8 @@ def make_entry(
     *,
     nom_aire: str,
     aire_id: int,
+    aire_lat: float,
+    aire_lng: float,
     equip: dict,
     equip_source: str,
     equip_date: str,
@@ -47,6 +49,10 @@ def make_entry(
     return {
         "nom_aire": nom_aire,
         "id": aire_id,
+        # lat/lng as already stored in index.html for this aire - never
+        # taken from the operator site (which typically has no GPS data).
+        "lat": aire_lat,
+        "lng": aire_lng,
         "equip": equip,
         "equip_source": equip_source,
         "equip_date": equip_date,
