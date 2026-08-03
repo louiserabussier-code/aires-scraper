@@ -1,43 +1,35 @@
 """Vinci Autoroutes adapter (ASF / Cofiroute / Escota network).
 
-Discovery: confirmed (2026-07, via user-provided real HTML) that
-vinci-autoroutes.com has no working /sitemap.xml (404), and that the root
-listing page (/fr/aires-et-services/) mixes two families of single-segment
-links:
-  - real per-highway hub pages: /fr/aires-et-services/autoroute-a10/,
-    .../autoroute-a83/, ... (30 of them) plus the oddball .../duplex-a86/
-  - brand/equipment filter pages with no hyphen: .../mcdonalds/, .../bp/,
-    .../wifi/, .../electrique/, etc. (not per-highway, but each still lists
-    some real aire links, so crawling them isn't wrong, just incomplete on
-    its own)
-The actual aire detail pages use the short highway code either way:
-  https://www.vinci-autoroutes.com/fr/aires-et-services/a83/aire-de-vendee/
-
-First cut of hub_pattern used [a-z0-9]+ (no hyphen), which silently
-excluded every "autoroute-aXX" hub link (all hyphenated) and matched only
-the 13 hyphen-free brand pages - explaining why a real run only reached
-~218 aires (whatever happened to carry one of those 13 brands) instead of
-Vinci's full ~1500. Widened to [a-z0-9-]+ so both link families discover
-(harmless overlap/redundancy for the brand pages, and dedup already
-prevents double-counting a leaf found via multiple hubs).
+Discovery + extraction go through Gatsby's page-data.json (see
+vinci_pagedata.py) rather than scraping rendered HTML: the old hub-page
+HTML crawl only ever found a small, brand-biased subset of aires (~218 of
+~1500) because the real per-highway aire list turned out to be rendered
+entirely client-side behind a "Voir plus" button, with zero aire links in
+the static HTML. page-data.json is the exact data Gatsby hydrates that list
+from, published as a plain static JSON file per hub page (no JS execution
+needed) - confirmed against a real file: full aire list, exact coordinates,
+`service` flag (Aire de repos/de services), and structured facilities/brands.
 """
 from __future__ import annotations
 
-import re
+from typing import Iterator
 
-from .base import BaseAdapter
+from .base import BaseAdapter, ParsedAire
+from .vinci_pagedata import iter_highway_page_data
 
 EQUIP_SYNONYMS = {
     "restaurant": ["restaurant", "restauration", "brasserie", "fast-food", "fast food"],
     # Per user's domain knowledge of this network: the real wording is
     # "espace canin", not "animaux" - dropped synonyms that used the latter.
+    # (Not seen as a Vinci facility/brand in real page-data so far - kept as
+    # a keyword-scan safety net in vinci_pagedata's fallback pass.)
     "animaux": ["espace canin", "aire pour chiens"],
     "enfants": ["aire de jeux", "espace enfants", "jeux pour enfants"],
     # PMR-accessible toilets + priority parking are near-universal on this
     # network's aires by law/default, so generic "accessible PMR" wording
-    # would be true almost everywhere and carries no real signal. Only a
-    # specific loanable-wheelchair mention is an actual variable extra -
-    # per user's domain knowledge, that's what "pmr":"ok" should mean here.
+    # would be true almost everywhere and carries no real signal. Narrowed
+    # to only "fauteuil roulant" (loanable wheelchair), an actual variable
+    # extra - per user's domain knowledge, that's what "pmr":"ok" means here.
     "pmr": ["fauteuil roulant"],
     "douches": ["douche", "douches"],
     "eau": ["point d'eau", "eau potable", "borne d'eau"],
@@ -52,8 +44,12 @@ class VinciAdapter(BaseAdapter):
     label = "Vinci Autoroutes"
     base_url = _BASE
     root_url = f"{_BASE}/fr/aires-et-services/"
-    hub_pattern = re.compile(rf"^{re.escape(_BASE)}/fr/aires-et-services/[a-z0-9-]+/?$", re.I)
-    url_pattern = re.compile(rf"^{re.escape(_BASE)}/fr/aires-et-services/[a-z0-9-]+/[a-z0-9-]+/?$", re.I)
-    # Kept as a fallback in case a real sitemap turns up elsewhere later.
-    sitemap_url = f"{_BASE}/sitemap.xml"
     equip_synonyms = EQUIP_SYNONYMS
+
+    # Tells cli.py to use iter_page_data_aires() instead of the generic
+    # discover()-then-fetch-then-parse() loop: page-data.json already gives
+    # us fully parsed aires, so there's no separate per-aire page to fetch.
+    has_page_data = True
+
+    def iter_page_data_aires(self, http) -> Iterator[ParsedAire]:
+        yield from iter_highway_page_data(http, self.root_url, self.base_url, self.equip_synonyms)

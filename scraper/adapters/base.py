@@ -55,7 +55,15 @@ class ParsedAire:
     lng: float | None
     equip: dict
     source_url: str
-    extraction_method: str  # "jsonld" | "keyword" | "none"
+    extraction_method: str  # "jsonld" | "keyword" | "none" | "page-data"
+    # Raw facility/brand names as scraped, kept alongside the mapped `equip`
+    # so nothing is lost if the app's equip schema doesn't cover something
+    # the source page does (e.g. Vinci's "Nurserie", "Laverie", brand names).
+    equip_brut: dict | None = None
+    # STATIC_AIRES' "km" category ("Aire de repos" / "Aire de services"),
+    # when the source reliably tells us which (e.g. Vinci's page-data
+    # "service" boolean) - None when we have no reliable way to infer it.
+    km: str | None = None
 
 
 def _strip_accents(text: str) -> str:
@@ -241,6 +249,12 @@ class BaseAdapter:
     hub_pattern: re.Pattern | None = None
     url_pattern: re.Pattern = re.compile(r"aire", re.I)
     equip_synonyms: dict = field(default_factory=dict)
+
+    # Set True by an adapter (e.g. VinciAdapter) that has a bulk structured
+    # data source (a JSON file covering many aires per fetch) instead of one
+    # HTML page per aire - see that adapter's iter_page_data_aires(). When
+    # True, cli.py skips discover()/parse() entirely for this operator.
+    has_page_data: bool = False
 
     def discover(self, http: PoliteSession) -> Iterable[str]:
         if self.root_url and self.hub_pattern:

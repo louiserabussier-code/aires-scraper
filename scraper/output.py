@@ -50,6 +50,7 @@ def make_entry(
     name_similarity: float,
     distance_km: float | None,
     extraction_method: str,
+    equip_brut: dict | None = None,
 ) -> dict:
     return {
         "nom_aire": nom_aire,
@@ -59,6 +60,10 @@ def make_entry(
         "lat": aire_lat,
         "lng": aire_lng,
         "equip": equip,
+        # Raw facility/brand names as scraped, for anything equip's fixed
+        # schema doesn't cover (e.g. "Nurserie", "Laverie", brand names) -
+        # kept for your own reference, not merged into equip.
+        "equip_brut": equip_brut or {},
         "equip_source": equip_source,
         "equip_date": equip_date,
         "source_url": source_url,
@@ -79,19 +84,25 @@ def make_new_aire_entry(
     equip_date: str,
     source_url: str,
     extraction_method: str,
+    equip_brut: dict | None = None,
+    km: str | None = None,
 ) -> dict:
     """An aire found on an operator site with no match in STATIC_AIRES -
     proposed as a brand new entry rather than dropped. No `id`: the user
     assigns one when integrating it into index.html. `km` (the aire-type
-    category in STATIC_AIRES, e.g. "Aire de repos") is intentionally left
-    out - we have no reliable way to infer it here."""
+    category in STATIC_AIRES, e.g. "Aire de repos") is only filled in when
+    the source reliably tells us which (e.g. Vinci's page-data `service`
+    flag) - left None otherwise, since we have no other reliable way to
+    infer it."""
     return {
         "nom_aire": nom_aire,
         "id": None,
         "status": "new_candidate",
         "lat": lat,
         "lng": lng,
+        "km": km,
         "equip": equip,
+        "equip_brut": equip_brut or {},
         "equip_source": equip_source,
         "equip_date": equip_date,
         "source_url": source_url,

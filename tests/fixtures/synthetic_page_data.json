@@ -1,0 +1,58 @@
+{
+  "result": {
+    "data": {
+      "content": {
+        "title": "A10",
+        "serviceAreas": [
+          {
+            "entity": {
+              "entityUrl": {"path": "/fr/aires-et-services/a10/aire-de-poitou-charentes-nord"},
+              "title": "Poitou Charentes Nord",
+              "guid": "964c580f",
+              "service": true,
+              "geolocation": {"lat": 46.296787591464, "lng": -0.37757781892178},
+              "facilities": [
+                {"entity": {"name": "Aire de jeux", "machineName": "airedejeux"}},
+                {"entity": {"name": "Wifi", "machineName": "wifi"}},
+                {"entity": {"name": "Douches", "machineName": "douches"}},
+                {"entity": {"name": "Vidange", "machineName": "vidange"}}
+              ],
+              "brands": [
+                {"entity": {"name": "McDonald's", "categoryCode": "BUFFET"}},
+                {"entity": {"name": "TOTALENERGIES", "categoryCode": "CARBURANT"}}
+              ]
+            }
+          },
+          {
+            "entity": {
+              "entityUrl": {"path": "/fr/aires-et-services/a10/aire-de-la-picardiere"},
+              "title": "La Picardière",
+              "guid": "9d5f3901",
+              "service": false,
+              "geolocation": {"lat": 47.535025308926, "lng": 0.96258012533176},
+              "facilities": [
+                {"entity": {"name": "Aire camping car", "machineName": "parkingcaravane"}},
+                {"entity": {"name": "Parking PL", "machineName": "parkingpl"}},
+                {"entity": {"name": "Electrique", "machineName": "bornerecharge"}}
+              ],
+              "brands": []
+            }
+          },
+          {
+            "entity": {
+              "entityUrl": {"path": "/fr/aires-et-services/a10/aire-de-test-canine"},
+              "title": "Aire de Test Canine",
+              "guid": "aaaa1111",
+              "service": true,
+              "geolocation": {"lat": 45.0, "lng": 0.0},
+              "facilities": [
+                {"entity": {"name": "Espace canin", "machineName": "espacecanin"}}
+              ],
+              "brands": []
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -38,30 +38,64 @@ python run_scraper.py probe --operator vinci --urls https://www.vinci-autoroutes
 python run_scraper.py probe --operator vinci --urls <url> --save-html /tmp/probe_html  # dump raw HTML for review
 ```
 
-Si le nom ou les équipements détectés sont faux/vides, ajuste dans
-`scraper/adapters/vinci.py` :
-- `root_url` / `hub_pattern` / `url_pattern` (découverte en deux temps :
-  une page racine `/fr/aires-et-services/` qui liste un lien "hub" par
-  autoroute, puis chaque hub qui liste ses pages d'aires - voir
-  `crawl_hub_pages` dans `adapters/base.py`. vinci-autoroutes.com n'a pas
-  de `/sitemap.xml` fonctionnel (confirmé 404 le 2026-07), d'où ce
-  mécanisme à la place d'un sitemap.)
-- `EQUIP_SYNONYMS` (mots-clés français par équipement). Deux cas
-  particuliers réglés selon la connaissance du réseau Vinci/APRR par
-  l'utilisateur : `pmr` ne se déclenche que sur "fauteuil roulant" (les
-  sanitaires PMR/parking prioritaire étant déjà quasi-systématiques sur ce
-  réseau, les détecter ne donnerait aucun signal utile) ; `animaux` se
-  déclenche sur "espace canin" (le vocabulaire réel du site), pas sur le
-  mot "animaux" lui-même.
-- au besoin, la logique de `BaseAdapter.parse()` dans `adapters/base.py`
-  (sélecteurs CSS spécifiques si le site a une structure HTML stable
-  plutôt que du texte libre)
+### Vinci : découverte via page-data.json (pas de scraping HTML rendu)
 
-Si `probe` affiche `no hub links matching pattern found on .../aires-et-
-services/`, c'est que la page racine ne liste pas les autoroutes de la
-façon supposée (un lien par autoroute en un seul segment de chemin) :
-lance `probe --operator vinci --urls <url racine>` ou partage le HTML de
-cette page pour recalibrer `hub_pattern`.
+vinci-autoroutes.com est un site Gatsby. La liste complète des aires par
+autoroute n'est **pas** dans le HTML statique des pages hub
+(`/fr/aires-et-services/autoroute-a10/`) : le bouton "Voir plus" qu'on y
+voit est un contrôle 100% client (aucun lien d'aire dans le HTML servi),
+donc une première version qui scrapait ce HTML ne trouvait qu'un
+sous-ensemble biaisé (~218 aires sur ~1500, uniquement via des pages de
+marques comme mcdonalds/bp qui listent, elles, quelques aires en dur).
+
+À la place, `scraper/adapters/vinci_pagedata.py` récupère directement le
+fichier de données Gatsby que React utilise pour hydrater cette liste :
+`{base}/page-data/fr/aires-et-services/autoroute-a10/page-data.json` (un
+par autoroute réelle, ~30 requêtes au total plutôt que ~1500). Ce fichier
+JSON contient déjà, pour chaque aire : nom exact, coordonnées GPS
+précises, la catégorie `service` (true/false → "Aire de services"/"Aire de
+repos", utilisé pour `km`), et des listes structurées `facilities`
+(`machineName` interne, ex. `airedejeux`) et `brands` (`name` +
+`categoryCode`, ex. `BUFFET`/`RESTAURATION`).
+
+Mapping `facilities`/`brands` → `equip` (dans `vinci_pagedata.py`,
+`FACILITY_MACHINE_NAME_TO_EQUIP` / `BRAND_CATEGORY_TO_EQUIP`) :
+- `airedejeux` → `enfants`, `wifi` → `wifi`, `douches` → `douches`
+- une marque avec `categoryCode` `BUFFET` ou `RESTAURATION` → `restaurant`
+- rien ne mappe encore `animaux`/`pmr`/`eau` de façon structurée sur ce
+  réseau (aucune facility de ce type observée) - un filet de sécurité
+  repasse quand même `EQUIP_SYNONYMS` sur les noms bruts au cas où une
+  correspondrait (ex. une future facility "Espace canin").
+- tout le reste (vidange, gonflage, nurserie, bornerecharge, laverie,
+  hotel, parkingpl, parkingcaravane, stationservice, gpl, dab,
+  boiteauxlettres, produitsregionaux, brumisateur, infotrafic, coworking,
+  presse, remarquable, bornesvlr, distribboissonnourriture, marques hors
+  BUFFET/RESTAURATION...) n'a pas d'équivalent dans le schéma `equip` de
+  l'app mais est conservé tel quel dans `equip_brut` (voir plus bas) plutôt
+  que d'être perdu.
+
+`--operator vinci` bascule automatiquement sur ce mécanisme
+(`adapter.has_page_data`), `probe`/`run` inclus - `discover()`/`parse()`
+(scraping HTML page par page) ne sont plus utilisés pour Vinci du tout.
+
+Si `probe --operator vinci` affiche "No aires found via the bulk data
+source", `HIGHWAY_HUB_PATTERN` ou `root_url` dans `vinci_pagedata.py`
+doivent être recalibrés - partage le HTML de `/fr/aires-et-services/`.
+
+### Autres opérateurs (sanef, aprr, area)
+
+Sans confirmation qu'ils sont aussi des sites Gatsby avec ce même
+mécanisme, ils gardent le scraping HTML classique : `EQUIP_SYNONYMS`
+(mots-clés français par équipement, à ajuster dans le fichier de chaque
+adaptateur), et `root_url`/`hub_pattern`/`url_pattern` (découverte en deux
+temps via `crawl_hub_pages` dans `adapters/base.py` si le site n'a pas de
+sitemap fonctionnel). Deux cas particuliers déjà réglés dans
+`vinci.py`/`EQUIP_SYNONYMS` (partagé par `aprr.py`/`area.py`) selon la
+connaissance du réseau Vinci/APRR par l'utilisateur : `pmr` ne se déclenche
+que sur "fauteuil roulant" (les sanitaires PMR/parking prioritaire étant
+déjà quasi-systématiques sur ce réseau, les détecter ne donnerait aucun
+signal utile) ; `animaux` se déclenche sur "espace canin" (le vocabulaire
+réel du site), pas sur le mot "animaux" lui-même.
 
 ## Étape 2 — vérifier APRR/AREA avant de s'engager
 
@@ -110,18 +144,25 @@ python run_scraper.py run --operator vinci --limit 200
 
 ```json
 {
-  "nom_aire": "Aire des Brouzils",
-  "id": 3003,
-  "equip": {"restaurant": "ok", "wifi": "ok", "douches": "nok"},
+  "nom_aire": "Aire de Poitou-Charentes Nord",
+  "id": 3011,
+  "lat": 46.29697,
+  "lng": -0.37694,
+  "equip": {"enfants": "ok", "wifi": "ok", "douches": "ok", "restaurant": "ok"},
+  "equip_brut": {"facilities": ["Aire de jeux", "Wifi", "Douches", "Vidange", "..."], "brands": ["McDonald's (BUFFET)", "TOTALENERGIES (CARBURANT)"]},
   "equip_source": "vinci",
   "equip_date": "2026-07",
-  "source_url": "https://www.vinci-autoroutes.com/...",
+  "source_url": "https://www.vinci-autoroutes.com/fr/aires-et-services/a10/aire-de-poitou-charentes-nord/",
   "match_confidence": "high",
-  "name_similarity": 0.92,
-  "distance_km": 0.02,
-  "extraction_method": "jsonld"
+  "name_similarity": 0.952,
+  "distance_km": 0.053,
+  "extraction_method": "page-data"
 }
 ```
+
+`equip_brut` garde les noms bruts de facilities/marques (y compris celles
+hors du schéma `equip`, ex. "Vidange"), pour ta référence - jamais fusionné
+dans `equip`.
 
 Les entrées de plusieurs opérateurs pour la même aire ne sont **pas
 fusionnées** entre elles (pour ne pas masquer un conflit ou décider à ta
@@ -143,17 +184,20 @@ comme "non trouvée", le script la propose comme **nouvelle entrée** dans
   "status": "new_candidate",
   "lat": 47.535025308926,
   "lng": 0.96258012533176,
+  "km": "Aire de repos",
   "equip": {},
+  "equip_brut": {"facilities": ["Aire camping car", "Parking PL", "Electrique"], "brands": []},
   "equip_source": "vinci",
   "equip_date": "2026-07",
   "source_url": "https://www.vinci-autoroutes.com/fr/aires-et-services/a10/aire-de-la-picardiere/",
-  "extraction_method": "none"
+  "extraction_method": "page-data"
 }
 ```
 
-- `id: null` volontairement : c'est à toi de lui attribuer un id (et de
-  remplir `km`, la catégorie "Aire de repos"/"Aire de services" - le
-  script ne l'invente pas) en l'ajoutant à `STATIC_AIRES`.
+- `id: null` volontairement : c'est à toi de lui attribuer un id en
+  l'ajoutant à `STATIC_AIRES`. `km` est rempli quand la source le permet
+  de façon fiable (le flag `service` de Vinci) - reste `null` sinon
+  (aucune autre source fiable pour l'inférer).
 - Ceci nécessite des coordonnées scrapées (sinon impossible de proposer une
   entrée géolocalisée) : sans lat/lng, le cas reste journalisé comme
   "not found" classique.

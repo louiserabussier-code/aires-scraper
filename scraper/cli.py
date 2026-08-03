@@ -8,6 +8,10 @@
 `probe` never writes output/state - it's a read-only diagnostic to check an
 operator's page structure before trusting it. `run` is the resumable full
 crawl: safe to Ctrl-C and re-invoke, it picks up where it left off.
+
+Vinci is special-cased (adapter.has_page_data): instead of one HTML page
+per aire, it's discovered+parsed in bulk from Gatsby page-data.json files
+(one per highway) - see adapters/vinci_pagedata.py.
 """
 from __future__ import annotations
 
@@ -21,6 +25,7 @@ from pathlib import Path
 
 from . import config
 from .adapters import ADAPTERS
+from .adapters.base import ParsedAire
 from .aires_data import Aire, load_aires
 from .http import PoliteSession, RobotsDisallowed
 from .matching import find_match
@@ -34,25 +39,8 @@ def _slug_for_url(url: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]+", "_", url).strip("_")[:150] + ".html"
 
 
-def cmd_probe(args: argparse.Namespace) -> None:
-    adapter = ADAPTERS[args.operator]
-    http = PoliteSession()
-
-    if args.urls:
-        urls = args.urls
-    else:
-        print(f"Discovering candidate URLs for {adapter.label} via sitemap...")
-        urls = list(itertools.islice(adapter.discover(http), args.limit))
-        if not urls:
-            print(
-                "No URLs discovered. The sitemap URL or url_pattern in "
-                f"scraper/adapters/{args.operator}.py is likely wrong for the "
-                "real site - inspect it manually and adjust, or pass --urls "
-                "with known aire page URLs to probe directly."
-            )
-            return
-
-    for url in urls:
+def _probe_urls(adapter, http: PoliteSession, args: argparse.Namespace) -> None:
+    for url in args.urls:
         print(f"\n=== {url} ===")
         try:
             resp = http.get(url)
@@ -80,11 +68,134 @@ def cmd_probe(args: argparse.Namespace) -> None:
         print(f"  extraction  : {parsed.extraction_method}")
         print(f"  equip facts : {parsed.equip or '(none found)'}")
 
+
+def cmd_probe(args: argparse.Namespace) -> None:
+    adapter = ADAPTERS[args.operator]
+    http = PoliteSession()
+
+    if args.urls:
+        _probe_urls(adapter, http, args)
+        print("\nReview the above before running a full crawl.")
+        return
+
+    if getattr(adapter, "has_page_data", False):
+        print(f"Fetching bulk structured data for {adapter.label}...")
+        shown = 0
+        for parsed in adapter.iter_page_data_aires(http):
+            if shown >= args.limit:
+                break
+            shown += 1
+            print(f"\n=== {parsed.source_url} ===")
+            print(f"  name        : {parsed.name}")
+            print(f"  lat/lng     : {parsed.lat}, {parsed.lng}")
+            print(f"  km category : {parsed.km}")
+            print(f"  equip facts : {parsed.equip or '(none found)'}")
+            print(f"  equip_brut  : {parsed.equip_brut}")
+        if shown == 0:
+            print(
+                "No aires found via the bulk data source. The discovery pattern "
+                f"in scraper/adapters/{args.operator}_pagedata.py is likely wrong "
+                "for the real site - inspect it manually and adjust."
+            )
+        else:
+            print(f"\n{shown} aire(s) shown (limited by --limit; a full run covers every highway).")
+        return
+
+    print(f"Discovering candidate URLs for {adapter.label} via sitemap...")
+    urls = list(itertools.islice(adapter.discover(http), args.limit))
+    if not urls:
+        print(
+            "No URLs discovered. The sitemap URL or url_pattern in "
+            f"scraper/adapters/{args.operator}.py is likely wrong for the "
+            "real site - inspect it manually and adjust, or pass --urls "
+            "with known aire page URLs to probe directly."
+        )
+        return
+    args.urls = urls
+    _probe_urls(adapter, http, args)
     print(
         "\nReview the above before running a full crawl. If names/equip look "
         "wrong, adjust the selectors/synonyms/url_pattern in "
         f"scraper/adapters/{args.operator}.py and probe again."
     )
+
+
+def _process_parsed_aire(
+    parsed: ParsedAire | None,
+    url: str,
+    candidates: list[Aire],
+    operator: str,
+    equip_date: str,
+    state: RunState,
+    entries_path: Path,
+    new_entries_path: Path,
+) -> None:
+    if parsed is None:
+        state.log_not_found(url, "no name extracted from page")
+        return
+
+    match = find_match(parsed.name, parsed.lat, parsed.lng, candidates)
+
+    if match.aire is None:
+        if parsed.lat is not None and parsed.lng is not None:
+            new_entry = make_new_aire_entry(
+                nom_aire=parsed.name,
+                lat=parsed.lat,
+                lng=parsed.lng,
+                equip=parsed.equip,
+                equip_source=operator,
+                equip_date=equip_date,
+                source_url=url,
+                extraction_method=parsed.extraction_method,
+                equip_brut=parsed.equip_brut,
+                km=parsed.km,
+            )
+            append_entry(new_entries_path, new_entry)
+            candidates.append(
+                Aire(
+                    id=None,
+                    nom=parsed.name,
+                    lat=parsed.lat,
+                    lng=parsed.lng,
+                    km=parsed.km,
+                    note=None,
+                    equip=parsed.equip,
+                )
+            )
+            state.log_new_candidate(url, parsed.name, parsed.lat, parsed.lng)
+        else:
+            state.log_not_found(url, f"no STATIC_AIRES match and no coordinates for {parsed.name!r}")
+        return
+
+    if match.aire.id is None:
+        # Matched a new-aire candidate already proposed earlier this run
+        # (or a resumed one) - nothing further to record.
+        state.log_not_found(url, f"duplicate of already-proposed new aire {match.aire.nom!r}")
+        return
+
+    if not parsed.equip:
+        state.log_not_found(
+            url, f"matched id={match.aire.id} {match.aire.nom!r} but no equipment facts extracted"
+        )
+        return
+
+    entry = make_entry(
+        nom_aire=match.aire.nom,
+        aire_id=match.aire.id,
+        aire_lat=match.aire.lat,
+        aire_lng=match.aire.lng,
+        equip=parsed.equip,
+        equip_source=operator,
+        equip_date=equip_date,
+        source_url=url,
+        match_confidence=match.confidence,
+        name_similarity=match.name_similarity,
+        distance_km=match.distance_km,
+        extraction_method=parsed.extraction_method,
+        equip_brut=parsed.equip_brut,
+    )
+    append_entry(entries_path, entry)
+    state.log_found(url, match.aire.id, match.aire.nom, match.confidence)
 
 
 def cmd_run(args: argparse.Namespace) -> None:
@@ -114,85 +225,44 @@ def cmd_run(args: argparse.Namespace) -> None:
     candidates = aires + load_new_aire_candidates(new_entries_path)
 
     processed_this_run = 0
-    for url in adapter.discover(http):
-        if args.limit and processed_this_run >= args.limit:
-            break
-        if state.is_processed(url):
-            continue
-        processed_this_run += 1
 
-        try:
-            resp = http.get(url)
-        except RobotsDisallowed:
-            state.log_not_found(url, "robots.txt disallow")
-            continue
-        if resp.status_code != 200:
-            state.log_not_found(url, f"http {resp.status_code}")
-            continue
-
-        parsed = adapter.parse(resp.text, url)
-        if parsed is None:
-            state.log_not_found(url, "no name extracted from page")
-            continue
-
-        match = find_match(parsed.name, parsed.lat, parsed.lng, candidates)
-
-        if match.aire is None:
-            if parsed.lat is not None and parsed.lng is not None:
-                new_entry = make_new_aire_entry(
-                    nom_aire=parsed.name,
-                    lat=parsed.lat,
-                    lng=parsed.lng,
-                    equip=parsed.equip,
-                    equip_source=args.operator,
-                    equip_date=equip_date,
-                    source_url=url,
-                    extraction_method=parsed.extraction_method,
-                )
-                append_entry(new_entries_path, new_entry)
-                candidates.append(
-                    Aire(id=None, nom=parsed.name, lat=parsed.lat, lng=parsed.lng, km=None, note=None, equip=parsed.equip)
-                )
-                state.log_new_candidate(url, parsed.name, parsed.lat, parsed.lng)
-            else:
-                state.log_not_found(
-                    url, f"no STATIC_AIRES match and no coordinates for {parsed.name!r}"
-                )
-            continue
-
-        if match.aire.id is None:
-            # Matched a new-aire candidate already proposed earlier this run
-            # (or a resumed one) - nothing further to record.
-            state.log_not_found(
-                url, f"duplicate of already-proposed new aire {match.aire.nom!r}"
+    if getattr(adapter, "has_page_data", False):
+        # Bulk structured source (one JSON per highway covers many aires) -
+        # already fully parsed, no separate per-aire fetch needed.
+        for parsed in adapter.iter_page_data_aires(http):
+            if args.limit and processed_this_run >= args.limit:
+                break
+            if state.is_processed(parsed.source_url):
+                continue
+            processed_this_run += 1
+            _process_parsed_aire(
+                parsed, parsed.source_url, candidates, args.operator, equip_date, state, entries_path, new_entries_path
             )
-            continue
+            if processed_this_run % 20 == 0:
+                log.info("%s: %d aires processed this run so far", args.operator, processed_this_run)
+    else:
+        for url in adapter.discover(http):
+            if args.limit and processed_this_run >= args.limit:
+                break
+            if state.is_processed(url):
+                continue
+            processed_this_run += 1
 
-        if not parsed.equip:
-            state.log_not_found(
-                url, f"matched id={match.aire.id} {match.aire.nom!r} but no equipment facts extracted"
+            try:
+                resp = http.get(url)
+            except RobotsDisallowed:
+                state.log_not_found(url, "robots.txt disallow")
+                continue
+            if resp.status_code != 200:
+                state.log_not_found(url, f"http {resp.status_code}")
+                continue
+
+            parsed = adapter.parse(resp.text, url)
+            _process_parsed_aire(
+                parsed, url, candidates, args.operator, equip_date, state, entries_path, new_entries_path
             )
-            continue
-
-        entry = make_entry(
-            nom_aire=match.aire.nom,
-            aire_id=match.aire.id,
-            aire_lat=match.aire.lat,
-            aire_lng=match.aire.lng,
-            equip=parsed.equip,
-            equip_source=args.operator,
-            equip_date=equip_date,
-            source_url=url,
-            match_confidence=match.confidence,
-            name_similarity=match.name_similarity,
-            distance_km=match.distance_km,
-            extraction_method=parsed.extraction_method,
-        )
-        append_entry(entries_path, entry)
-        state.log_found(url, match.aire.id, match.aire.nom, match.confidence)
-
-        if processed_this_run % 20 == 0:
-            log.info("%s: %d URLs processed this run so far", args.operator, processed_this_run)
+            if processed_this_run % 20 == 0:
+                log.info("%s: %d URLs processed this run so far", args.operator, processed_this_run)
 
     output_json = output_dir / f"enrichment_{args.operator}.json"
     total = compile_json(entries_path, output_json)
@@ -222,7 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_probe = sub.add_parser("probe", help="Diagnostic: fetch a few pages, print detected structure")
     p_probe.add_argument("--operator", required=True, choices=sorted(ADAPTERS))
     p_probe.add_argument("--limit", type=int, default=5)
-    p_probe.add_argument("--urls", nargs="*", help="Specific URLs to probe instead of sitemap discovery")
+    p_probe.add_argument("--urls", nargs="*", help="Specific URLs to probe instead of automatic discovery")
     p_probe.add_argument(
         "--save-html", metavar="DIR", help="Save each probed page's raw HTML into DIR for inspection"
     )
