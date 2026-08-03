@@ -28,9 +28,11 @@ class RunState:
         self.found_log_path = self.logs_dir / f"{operator_key}_found.log"
         self.not_found_log_path = self.logs_dir / f"{operator_key}_not_found.log"
         self.new_candidates_log_path = self.logs_dir / f"{operator_key}_new_candidates.log"
+        self.highway_issues_log_path = self.logs_dir / f"{operator_key}_highway_issues.log"
 
         self._processed_urls: set[str] = set()
         self._counts = {outcome: 0 for outcome in _OUTCOMES}
+        self._highway_issue_count = 0
         self._load_checkpoint()
 
     def _load_checkpoint(self) -> None:
@@ -83,6 +85,22 @@ class RunState:
         with self.new_candidates_log_path.open("a", encoding="utf-8") as f:
             f.write(f"{ts}\t{url}\t-> nom={nom!r} lat={lat} lng={lng}\n")
 
+    def log_highway_issue(self, hub_url: str, data_url: str, reason: str) -> None:
+        """For bulk sources (page-data.json etc.): one "hub" fetch feeds many
+        aires, so a failure here isn't an aire-level found/not-found and
+        isn't checkpointed (retried fresh every run - cheap, ~30 requests).
+        Kept in its own durable log so a run that silently under-delivers
+        (e.g. only 1 of 29 highways actually yielded aires) is diagnosable
+        without relying on console scrollback."""
+        self._highway_issue_count += 1
+        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self.highway_issues_log_path.open("a", encoding="utf-8") as f:
+            f.write(f"{ts}\t{hub_url}\t{data_url}\t-> {reason}\n")
+
     @property
     def counts(self) -> dict:
         return dict(self._counts)
+
+    @property
+    def highway_issue_count(self) -> int:
+        return self._highway_issue_count

@@ -23,7 +23,7 @@ class StubPageDataAdapter:
     def parse(self, html, url):
         raise AssertionError("parse() should not be called for a has_page_data adapter")
 
-    def iter_page_data_aires(self, http):
+    def iter_page_data_aires(self, http, on_highway_issue=None):
         yield ParsedAire(
             name="Aire des Brouzils",
             lat=46.87924,

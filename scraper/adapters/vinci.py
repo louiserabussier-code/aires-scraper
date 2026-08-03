@@ -51,5 +51,7 @@ class VinciAdapter(BaseAdapter):
     # us fully parsed aires, so there's no separate per-aire page to fetch.
     has_page_data = True
 
-    def iter_page_data_aires(self, http) -> Iterator[ParsedAire]:
-        yield from iter_highway_page_data(http, self.root_url, self.base_url, self.equip_synonyms)
+    def iter_page_data_aires(self, http, on_highway_issue=None) -> Iterator[ParsedAire]:
+        yield from iter_highway_page_data(
+            http, self.root_url, self.base_url, self.equip_synonyms, on_highway_issue=on_highway_issue
+        )

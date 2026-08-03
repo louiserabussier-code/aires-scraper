@@ -94,3 +94,58 @@ def test_iter_highway_page_data_end_to_end():
     assert len(aires) == 3
     assert {a.name for a in aires} == {"Poitou Charentes Nord", "La Picardière", "Aire de Test Canine"}
     # The brand page (mcdonalds) must not have been treated as a highway hub.
+
+
+def test_iter_highway_page_data_reports_per_highway_failures():
+    # Real-world case that motivated this: a run with no --limit only
+    # yielded aires from 1 of 29 highways, with the other 28 failures only
+    # ever logged as an ephemeral console warning - on_highway_issue lets
+    # the caller (RunState) record these durably instead.
+    class FakeResponse:
+        def __init__(self, status_code, text=""):
+            self.status_code = status_code
+            self.text = text
+
+    class FakeHttp:
+        def __init__(self, pages):
+            self.pages = pages
+
+        def get(self, url):
+            if url not in self.pages:
+                raise RobotsDisallowed(url)
+            return self.pages[url]
+
+    hub_a83 = f"{BASE}/fr/aires-et-services/autoroute-a83/"
+    data_url_a83 = f"{BASE}/page-data/fr/aires-et-services/autoroute-a83/page-data.json"
+    root_html = f"""
+    <html><body>
+    <a href="/fr/aires-et-services/autoroute-a10/">A10</a>
+    <a href="/fr/aires-et-services/autoroute-a83/">A83</a>
+    </body></html>
+    """
+    http = FakeHttp(
+        {
+            ROOT_URL: FakeResponse(200, root_html),
+            DATA_URL_A10: FakeResponse(200, json.dumps(_load_fixture())),
+            data_url_a83: FakeResponse(404),
+            # hub_a83 itself is never fetched (only its page-data.json is).
+        }
+    )
+
+    issues = []
+    aires = list(
+        iter_highway_page_data(
+            http,
+            ROOT_URL,
+            BASE,
+            VinciAdapter.equip_synonyms,
+            on_highway_issue=lambda hub_url, data_url, reason: issues.append((hub_url, data_url, reason)),
+        )
+    )
+
+    assert len(aires) == 3  # A10's aires still came through
+    assert len(issues) == 1
+    hub_url, data_url, reason = issues[0]
+    assert hub_url == hub_a83
+    assert data_url == data_url_a83
+    assert "404" in reason

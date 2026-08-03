@@ -141,11 +141,24 @@ def parse_page_data(data: dict, base_url: str, equip_synonyms: dict) -> list[Par
 
 
 def iter_highway_page_data(
-    http: PoliteSession, root_url: str, base_url: str, equip_synonyms: dict
+    http: PoliteSession,
+    root_url: str,
+    base_url: str,
+    equip_synonyms: dict,
+    on_highway_issue=None,
 ) -> Iterator[ParsedAire]:
     """Fetch the root listing page for highway hub links, then one
     page-data.json per highway, yielding every aire found across all of
-    them (already fully parsed - no further per-aire fetch needed)."""
+    them (already fully parsed - no further per-aire fetch needed).
+
+    A per-highway failure (robots disallow, non-200, bad JSON, or a
+    fetched-but-empty page-data.json) only skips that one highway - it
+    never aborts the whole run. Previously that was logged via `log.warning`
+    only, an ephemeral console line easy to miss in a long run with no
+    --limit; on_highway_issue(hub_url, data_url, reason), when given, lets
+    the caller (cli.py) also record it durably (logs/<op>_highway_issues.log)
+    so "why did I only get 451 of ~1500 aires" is answerable after the fact.
+    """
     try:
         resp = http.get(root_url)
     except RobotsDisallowed:
@@ -165,20 +178,29 @@ def iter_highway_page_data(
     for hub_url in hub_urls:
         hub_path = hub_url[len(base_url) :] if hub_url.startswith(base_url) else hub_url
         data_url = page_data_url(base_url, hub_path)
+
+        def _issue(reason: str) -> None:
+            log.warning("%s: %s", data_url, reason)
+            if on_highway_issue:
+                on_highway_issue(hub_url, data_url, reason)
+
         try:
             data_resp = http.get(data_url)
         except RobotsDisallowed:
-            log.warning("robots.txt disallows %s -> skipping this highway", data_url)
+            _issue("robots.txt disallows page-data.json")
             continue
         if data_resp.status_code != 200:
-            log.warning("%s returned %s", data_url, data_resp.status_code)
+            _issue(f"page-data.json returned HTTP {data_resp.status_code}")
             continue
         try:
             data = json.loads(data_resp.text)
         except json.JSONDecodeError:
-            log.warning("could not parse JSON at %s", data_url)
+            _issue("could not parse page-data.json as JSON")
             continue
 
         aires = parse_page_data(data, base_url, equip_synonyms)
-        log.info("%s: %d aire(s)", data_url, len(aires))
+        if not aires:
+            _issue("page-data.json fetched OK but yielded 0 aires (shape may have changed)")
+        else:
+            log.info("%s: %d aire(s)", data_url, len(aires))
         yield from aires

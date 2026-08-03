@@ -228,8 +228,11 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     if getattr(adapter, "has_page_data", False):
         # Bulk structured source (one JSON per highway covers many aires) -
-        # already fully parsed, no separate per-aire fetch needed.
-        for parsed in adapter.iter_page_data_aires(http):
+        # already fully parsed, no separate per-aire fetch needed. A failed
+        # highway fetch (robots disallow, non-200, bad/empty JSON) is logged
+        # durably instead of only as a console warning, so an unexpectedly
+        # low total is diagnosable afterwards.
+        for parsed in adapter.iter_page_data_aires(http, on_highway_issue=state.log_highway_issue):
             if args.limit and processed_this_run >= args.limit:
                 break
             if state.is_processed(parsed.source_url):
@@ -273,6 +276,11 @@ def cmd_run(args: argparse.Namespace) -> None:
         f"Totals so far -> found: {state.counts['found']}, not found: {state.counts['not_found']}, "
         f"new candidates: {state.counts['new_candidate']}."
     )
+    if state.highway_issue_count:
+        print(
+            f"WARNING: {state.highway_issue_count} highway/hub fetch issue(s) this run - "
+            f"see {state.highway_issues_log_path} (some highways may be under-represented above)."
+        )
     print(f"Review file written: {output_json} ({total} entries)")
     print(f"New-aire candidates written: {new_output_json} ({total_new} entries)")
 

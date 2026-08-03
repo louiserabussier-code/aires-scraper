@@ -237,6 +237,15 @@ comme "non trouvée", le script la propose comme **nouvelle entrée** dans
   `STATIC_AIRES`, doublon d'un candidat déjà proposé...)
 - `logs/<operator>_new_candidates.log` — URL → nom + coordonnées proposées
   comme nouvelle aire
+- `logs/<operator>_highway_issues.log` — pour une source en gros (Vinci
+  page-data.json) : hub d'autoroute + URL du JSON + raison de l'échec
+  (robots interdit, HTTP non-200, JSON invalide, ou JSON récupéré mais 0
+  aire dedans). Pas coché dans le checkpoint - retenté à chaque run (~30
+  requêtes, pas cher). Si le total d'une run est très inférieur à ce que tu
+  attends (ex. 451 au lieu de ~1500), regarde ce fichier en premier avant
+  de soupçonner un bug de découverte ou de matching : jusqu'à récemment, ces
+  échecs par autoroute n'étaient qu'un warning console éphémère, facile à
+  manquer sur une run sans `--limit` qui défile vite.
 
 ## Tests
 
