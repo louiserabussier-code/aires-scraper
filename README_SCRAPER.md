@@ -126,6 +126,23 @@ python run_scraper.py run --operator vinci --limit 200
 - Progression écrite au fil de l'eau dans `state/<op>.jsonl` (une ligne par
   URL traitée) → un Ctrl-C ou crash ne perd que la requête en cours ;
   relancer la même commande reprend où ça s'est arrêté.
+
+**Si le mécanisme de découverte/extraction d'un opérateur change**
+(comme le passage de Vinci au scraping HTML vers `page-data.json`) : le
+checkpoint est indexé par URL, et les deux mécanismes peuvent produire les
+mêmes URLs pour une même aire - le reprendre tel quel ferait donc
+silencieusement ignorer des aires déjà traitées, alors que le nouveau
+mécanisme donnerait de meilleures données pour elles. Et comme
+`output/enrichment_<op>.jsonl` est en append-only (non dédoublonné par id),
+relancer sans vider produirait des entrées en double pour ces aires plutôt
+que de les remplacer. Dans ce cas, repartir de zéro pour cet opérateur :
+
+```bash
+rm -f state/<op>.jsonl \
+      logs/<op>_found.log logs/<op>_not_found.log logs/<op>_new_candidates.log \
+      output/enrichment_<op>.jsonl output/enrichment_<op>.json \
+      output/new_aires_<op>.jsonl output/new_aires_<op>.json
+```
 - Chaque aire scrapée est comparée à `STATIC_AIRES` par nom (flou,
   normalisé, accents/préfixes "aire de" retirés — mais **jamais** les
   suffixes Est/Ouest/Nord/Sud, deux aires jumelles à quelques centaines de
