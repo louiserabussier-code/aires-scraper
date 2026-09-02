@@ -94,11 +94,13 @@ def cmd_probe(args: argparse.Namespace) -> None:
         if shown == 0:
             print(
                 "No aires found via the bulk data source. The discovery pattern "
-                f"in scraper/adapters/{args.operator}_pagedata.py is likely wrong "
-                "for the real site - inspect it manually and adjust."
+                f"in scraper/adapters/{args.operator}_pagedata.py or "
+                f"scraper/adapters/{args.operator}_jsonapi.py (whichever this "
+                "operator uses) is likely wrong for the real site - inspect it "
+                "manually and adjust."
             )
         else:
-            print(f"\n{shown} aire(s) shown (limited by --limit; a full run covers every highway).")
+            print(f"\n{shown} aire(s) shown (limited by --limit; a full run covers the whole source).")
         return
 
     print(f"Discovering candidate URLs for {adapter.label} via sitemap...")

@@ -1,31 +1,27 @@
 """APRR adapter.
 
-DISABLED BY DEFAULT (see config.OPERATORS["aprr"]["enabled_by_default"]).
+DISABLED BY DEFAULT (see config.OPERATORS["aprr"]["enabled_by_default"]) -
+still requires a successful `probe --operator aprr` before --enable, since
+the field names in aprr_jsonapi.py are unverified from this side (see that
+module's docstring).
 
-Confirmed (2026-07, via a real HTML page the user shared) that the traveler
-site is at voyage.aprr.fr (not www.aprr.fr - the corporate site), runs
-Drupal 10 (data-drupal-selector, "Generator: Drupal 10"), not Gatsby -
-so there's no page-data.json equivalent for discovery. Its JSON-LD is a
-generic Article schema (headline/description/image), not a Place with
-geo/amenityFeature, so it gives us nothing for equipment or coordinates.
-Content is editorial prose ("Le restaurant, situé sur l'aire, vous
-propose..."), not a structured facility/icon list - extraction falls back
-to the generic keyword+negation scan in BaseAdapter.parse().
-
-Discovery is not yet wired up: the user confirmed the hub listing page
-(/aires-sur-autoroute/aires-de-services) has direct static <a href> links
-to each aire (no JS-only button like Vinci's "Voir plus"), but we haven't
-seen that page's HTML yet to know its pagination or exact link pattern -
-and we're checking whether Drupal's JSON:API (/jsonapi/...) offers a bulk
-shortcut similar to Vinci's page-data.json before committing to a crawl
-pattern. Still requires a successful `probe` (and real discovery wiring)
-before --enable.
+Confirmed (2026-07, via real pages the user shared) that the traveler site
+is at voyage.aprr.fr (not www.aprr.fr - the corporate site), runs Drupal 10,
+not Gatsby. Its per-aire JSON-LD is a generic Article schema (no
+geo/amenityFeature) and content is editorial prose, not a structured
+facility list - but Drupal exposes a standard JSON:API collection at
+/jsonapi/node/service_area covering every aire with pagination, GPS
+coordinates, and a service-name relationship, which is what
+aprr_jsonapi.py uses instead of scraping rendered pages. The hub listing
+page (/aires-sur-autoroute/aires-de-services) only has ~6 editorially
+featured links, not the full list - not used for discovery.
 """
 from __future__ import annotations
 
-import re
+from typing import Iterator
 
-from .base import BaseAdapter
+from .aprr_jsonapi import iter_service_areas
+from .base import BaseAdapter, ParsedAire
 from .vinci import EQUIP_SYNONYMS  # same French keyword set as a starting point
 
 
@@ -33,6 +29,10 @@ class AprrAdapter(BaseAdapter):
     key = "aprr"
     label = "APRR"
     base_url = "https://voyage.aprr.fr"
-    sitemap_url = "https://voyage.aprr.fr/sitemap.xml"
-    url_pattern = re.compile(r"aire[s]?-de-(service|repos)", re.I)
     equip_synonyms = EQUIP_SYNONYMS
+
+    # See VinciAdapter - same bulk-source mechanism, different API shape.
+    has_page_data = True
+
+    def iter_page_data_aires(self, http, on_highway_issue=None) -> Iterator[ParsedAire]:
+        yield from iter_service_areas(http, self.equip_synonyms, on_page_issue=on_highway_issue)

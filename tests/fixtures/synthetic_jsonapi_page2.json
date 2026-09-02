@@ -1,0 +1,15 @@
+{
+  "data": [
+    {
+      "type": "node--service_area",
+      "id": "node-4",
+      "attributes": {
+        "title": "Aire de la Chaponne",
+        "field_locate_content": "45.5;4.5"
+      },
+      "relationships": {"field_services": {"data": []}}
+    }
+  ],
+  "included": [],
+  "links": {}
+}

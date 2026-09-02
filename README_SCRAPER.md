@@ -95,27 +95,41 @@ déjà quasi-systématiques sur ce réseau, les détecter ne donnerait aucun
 signal utile) ; `animaux` se déclenche sur "espace canin" (le vocabulaire
 réel du site), pas sur le mot "animaux" lui-même.
 
-**APRR** (confirmé 2026-07 via une vraie page) : domaine réel
-`voyage.aprr.fr` (pas `www.aprr.fr`, corrigé dans `aprr.py`/`config.py`).
-C'est du **Drupal 10**, pas du Gatsby - pas d'équivalent `page-data.json`.
-Le JSON-LD présent est un schéma `Article` générique (headline/description/
-image), pas un `Place` avec `geo`/`amenityFeature` - rien à en tirer pour
-les équipements ou les coordonnées. Le contenu est un article éditorial en
-prose ("Le restaurant, situé sur l'aire, vous propose..."), pas une liste
-structurée d'icônes comme chez Vinci - l'extraction s'appuiera donc sur le
-scan par mots-clés générique de `BaseAdapter.parse()`, déjà en place.
-Discovery pas encore câblée : la page hub `/aires-sur-autoroute/
-aires-de-services` a bien des `<a href>` statiques directs vers chaque
-aire (pas de bouton JS caché comme "Voir plus" chez Vinci), mais on n'a pas
-encore vu son HTML (pagination ? nombre de liens ?), et on vérifie si
-Drupal expose une API JSON:API (`/jsonapi/...`) qui donnerait un
-raccourci comparable à `page-data.json` avant de coder le crawl.
+**APRR** (confirmé 2026-07) : domaine réel `voyage.aprr.fr` (pas
+`www.aprr.fr`, corrigé). C'est du **Drupal 10**, pas du Gatsby - mais
+Drupal expose une vraie API structurée équivalente à `page-data.json` :
+**JSON:API** à `/jsonapi/node/service_area`, paginée nativement
+(`links.next.href` - voir `scraper/adapters/aprr_jsonapi.py`, même
+mécanisme `has_page_data` que Vinci). Chaque aire y a un nom, des
+coordonnées GPS (`field_locate_content`, format `"lat;lon"`), et une
+relation `field_services` vers des nœuds nommant les équipements -
+mappés vers `equip` par scan de mots-clés (`EQUIP_SYNONYMS`) plutôt qu'un
+dictionnaire de codes internes stables comme le `machineName` de Vinci,
+faute d'un tel code confirmé côté APRR. La page hub
+`/aires-sur-autoroute/aires-de-services` (~6 liens éditoriaux seulement,
+pas la liste complète) n'est **plus** utilisée pour la découverte.
+
+⚠️ Les noms de champs (`field_locate_content`, `field_services`,
+`field_highway`...) viennent de l'inspection de l'utilisateur, pas d'un
+JSON brut vérifié de ce côté-ci (pas d'accès réseau ici) - contrairement à
+l'enveloppe JSON:API elle-même (`data`/`links.next`/`included`), qui est
+la spec formelle, pas une supposition. Chaque accès à un champ se dégrade
+en `log.warning` + aire ignorée plutôt qu'un crash si le nom est faux -
+mais `probe --operator aprr` reste nécessaire avant `--enable` pour
+confirmer que les vrais noms de champs correspondent.
 
 **Sanef** : domaine réel confirmé `www.autoroutes.sanef.com` (pas
 `www.sanef.com`, corrigé) - mais sa structure de page n'a pas encore été
 vérifiée du tout, donc `enabled_by_default` est passé à `False` par
 précaution (il était à `True` alors qu'il pointait vers le mauvais
-domaine depuis le début).
+domaine depuis le début). Bloqué en 403 sur son `robots.txt` même après
+le correctif de User-Agent, alors que la même URL se charge normalement
+dans un navigateur - cause encore incertaine (IP/comportement plutôt que
+seulement le User-Agent ?). Piste de diagnostic rapide : comparer
+`curl -A "<le USER_AGENT de config.py>" -v https://www.autoroutes.sanef.com/robots.txt`
+directement dans un terminal - si `curl` obtient aussi un 403 avec le
+même User-Agent, le blocage n'est pas spécifique à ce script. En
+attendant, Sanef reste de côté ; APRR est la priorité.
 
 **AREA** : domaine pas encore confirmé (`www.area-autoroute.fr` reste une
 supposition non vérifiée).

@@ -1,0 +1,51 @@
+{
+  "data": [
+    {
+      "type": "node--service_area",
+      "id": "node-1",
+      "attributes": {
+        "title": "Aire du Poulet de Bresse",
+        "path": {"alias": "/aires-sur-autoroute/aires-de-services/aire-du-poulet-de-bresse"},
+        "field_highway": "A39",
+        "field_kilometer": "123.4",
+        "field_direction": "N",
+        "field_locate_content": "46.607356;4.880161"
+      },
+      "relationships": {
+        "field_services": {
+          "data": [
+            {"type": "node--map_services", "id": "svc-restaurant"},
+            {"type": "node--map_services", "id": "svc-wifi"}
+          ]
+        }
+      }
+    },
+    {
+      "type": "node--service_area",
+      "id": "node-2",
+      "attributes": {
+        "title": "Aire Sans Services",
+        "drupal_internal__nid": 4242,
+        "field_locate_content": {"value": "45.1;5.2"}
+      },
+      "relationships": {
+        "field_services": {"data": []}
+      }
+    },
+    {
+      "type": "node--service_area",
+      "id": "node-3",
+      "attributes": {
+        "title": null,
+        "field_locate_content": "44.0;3.0"
+      }
+    }
+  ],
+  "included": [
+    {"type": "node--map_services", "id": "svc-restaurant", "attributes": {"title": "Restaurant"}},
+    {"type": "node--map_services", "id": "svc-wifi", "attributes": {"title": "Wifi"}}
+  ],
+  "links": {
+    "next": {"href": "https://voyage.aprr.fr/jsonapi/node/service_area?include=field_services&page[limit]=50&page[offset]=50"}
+  }
+}
