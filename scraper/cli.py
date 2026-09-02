@@ -1,7 +1,7 @@
 """CLI entrypoint.
 
   python run_scraper.py probe --operator vinci --limit 5
-  python run_scraper.py probe --operator aprr --urls https://www.aprr.fr/...
+  python run_scraper.py probe --operator aprr --urls https://voyage.aprr.fr/...
   python run_scraper.py run --operator vinci --limit 200
   python run_scraper.py run --operator aprr --enable   # only after probing aprr
 

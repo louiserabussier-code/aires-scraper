@@ -84,25 +84,48 @@ doivent être recalibrés - partage le HTML de `/fr/aires-et-services/`.
 
 ### Autres opérateurs (sanef, aprr, area)
 
-Sans confirmation qu'ils sont aussi des sites Gatsby avec ce même
-mécanisme, ils gardent le scraping HTML classique : `EQUIP_SYNONYMS`
-(mots-clés français par équipement, à ajuster dans le fichier de chaque
-adaptateur), et `root_url`/`hub_pattern`/`url_pattern` (découverte en deux
-temps via `crawl_hub_pages` dans `adapters/base.py` si le site n'a pas de
-sitemap fonctionnel). Deux cas particuliers déjà réglés dans
-`vinci.py`/`EQUIP_SYNONYMS` (partagé par `aprr.py`/`area.py`) selon la
+`EQUIP_SYNONYMS` (mots-clés français par équipement, à ajuster dans le
+fichier de chaque adaptateur), et `root_url`/`hub_pattern`/`url_pattern`
+(découverte en deux temps via `crawl_hub_pages` dans `adapters/base.py` si
+le site n'a pas de sitemap fonctionnel). Deux cas particuliers déjà réglés
+dans `vinci.py`/`EQUIP_SYNONYMS` (partagé par `aprr.py`/`area.py`) selon la
 connaissance du réseau Vinci/APRR par l'utilisateur : `pmr` ne se déclenche
 que sur "fauteuil roulant" (les sanitaires PMR/parking prioritaire étant
 déjà quasi-systématiques sur ce réseau, les détecter ne donnerait aucun
 signal utile) ; `animaux` se déclenche sur "espace canin" (le vocabulaire
 réel du site), pas sur le mot "animaux" lui-même.
 
-## Étape 2 — vérifier APRR/AREA avant de s'engager
+**APRR** (confirmé 2026-07 via une vraie page) : domaine réel
+`voyage.aprr.fr` (pas `www.aprr.fr`, corrigé dans `aprr.py`/`config.py`).
+C'est du **Drupal 10**, pas du Gatsby - pas d'équivalent `page-data.json`.
+Le JSON-LD présent est un schéma `Article` générique (headline/description/
+image), pas un `Place` avec `geo`/`amenityFeature` - rien à en tirer pour
+les équipements ou les coordonnées. Le contenu est un article éditorial en
+prose ("Le restaurant, situé sur l'aire, vous propose..."), pas une liste
+structurée d'icônes comme chez Vinci - l'extraction s'appuiera donc sur le
+scan par mots-clés générique de `BaseAdapter.parse()`, déjà en place.
+Discovery pas encore câblée : la page hub `/aires-sur-autoroute/
+aires-de-services` a bien des `<a href>` statiques directs vers chaque
+aire (pas de bouton JS caché comme "Voir plus" chez Vinci), mais on n'a pas
+encore vu son HTML (pagination ? nombre de liens ?), et on vérifie si
+Drupal expose une API JSON:API (`/jsonapi/...`) qui donnerait un
+raccourci comparable à `page-data.json` avant de coder le crawl.
 
-Conformément à la consigne : APRR et AREA sont **désactivés par défaut**
-(`config.OPERATORS["aprr"]["enabled_by_default"] = False`). `run
---operator aprr` refuse de tourner tant que tu n'as pas passé `--enable`,
-ce qui t'oblige à faire un `probe --operator aprr` d'abord et à juger si
+**Sanef** : domaine réel confirmé `www.autoroutes.sanef.com` (pas
+`www.sanef.com`, corrigé) - mais sa structure de page n'a pas encore été
+vérifiée du tout, donc `enabled_by_default` est passé à `False` par
+précaution (il était à `True` alors qu'il pointait vers le mauvais
+domaine depuis le début).
+
+**AREA** : domaine pas encore confirmé (`www.area-autoroute.fr` reste une
+supposition non vérifiée).
+
+## Étape 2 — vérifier APRR/AREA/Sanef avant de s'engager
+
+Conformément à la consigne : APRR, AREA et Sanef sont **désactivés par
+défaut** (`config.OPERATORS[op]["enabled_by_default"] = False`). `run
+--operator aprr` (idem sanef/area) refuse de tourner tant que tu n'as pas
+passé `--enable`, ce qui t'oblige à faire un `probe` d'abord et à juger si
 la structure ressemble à celle de vinci-autoroutes.com (même mécanisme
 `BaseAdapter`) ou si un adapter dédié serait nécessaire.
 
@@ -121,6 +144,16 @@ python run_scraper.py run --operator vinci --limit 200
 - Respecte `robots.txt` de chaque domaine (parsé via `urllib.robotparser`) ;
   toute URL interdite est journalée dans `logs/<op>_not_found.log`, jamais
   récupérée.
+- **User-Agent** (`config.USER_AGENT`) : préfixé `Mozilla/5.0 (compatible;
+  ...)` avant le nom honnête du bot + contact - convention utilisée par les
+  vrais bots déclarés (Googlebot, Bingbot...), pas une usurpation de
+  navigateur. Nécessaire : un `robots.txt` de sanef.com renvoyait un 403 au
+  script avec un User-Agent sans ce préfixe, alors que la même URL se
+  charge normalement dans un vrai navigateur et que rien dans le fichier
+  ne l'interdit - le blocage était sur l'empreinte de la requête, pas sur
+  le contenu. `Accept`/`Accept-Language` sont aussi envoyés pour la même
+  raison (une requête avec seulement un User-Agent est elle-même une
+  empreinte inhabituelle pour certains filtres anti-bot basiques).
 - Au moins 2.5–3.2s (jitter) entre deux requêtes vers le même domaine, plus
   le `Crawl-delay` du robots.txt si celui-ci est plus grand.
 - Progression écrite au fil de l'eau dans `state/<op>.jsonl` (une ligne par

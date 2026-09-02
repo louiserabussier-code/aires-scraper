@@ -1,7 +1,13 @@
 """Sanef adapter.
 
-URL pattern and sitemap location are best-effort defaults, not verified
-against a live page - run `--probe` and adjust before a full crawl.
+Corrected 2026-07: the traveler site is autoroutes.sanef.com, not
+www.sanef.com (the corporate site) - confirmed via a real aire page URL
+the user found (https://www.autoroutes.sanef.com/en/area/service/...).
+Beyond the domain, everything else here (sitemap_url, url_pattern,
+EQUIP_SYNONYMS) is still an unverified guess - no real HTML from this
+domain has been checked yet. Gated behind --enable pending a successful
+`probe` run, like aprr/area (was previously enabled_by_default=True,
+pointed at the wrong domain the whole time - flipped off until verified).
 """
 from __future__ import annotations
 
@@ -23,7 +29,7 @@ EQUIP_SYNONYMS = {
 class SanefAdapter(BaseAdapter):
     key = "sanef"
     label = "Sanef"
-    base_url = "https://www.sanef.com"
-    sitemap_url = "https://www.sanef.com/sitemap.xml"
+    base_url = "https://www.autoroutes.sanef.com"
+    sitemap_url = "https://www.autoroutes.sanef.com/sitemap.xml"
     url_pattern = re.compile(r"aire[s]?-de-(service|repos)", re.I)
     equip_synonyms = EQUIP_SYNONYMS

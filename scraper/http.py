@@ -28,7 +28,18 @@ class PoliteSession:
 
     def __init__(self):
         self._session = requests.Session()
-        self._session.headers.update({"User-Agent": config.USER_AGENT})
+        # Beyond User-Agent, a couple of standard content-negotiation
+        # headers - not browser fingerprint spoofing (no Sec-Fetch-*, no JS
+        # capability claims), just what any well-formed HTTP client sends,
+        # since a request with only a User-Agent header is itself an
+        # unusual-looking fingerprint some basic bot filters flag.
+        self._session.headers.update(
+            {
+                "User-Agent": config.USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+            }
+        )
         self._robots = RobotsCache(self._session)
         self._last_request_at: dict[str, float] = {}
 
