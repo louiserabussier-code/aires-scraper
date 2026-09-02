@@ -6,12 +6,19 @@
   python run_scraper.py run --operator aprr --enable   # only after probing aprr
 
 `probe` never writes output/state - it's a read-only diagnostic to check an
-operator's page structure before trusting it. `run` is the resumable full
-crawl: safe to Ctrl-C and re-invoke, it picks up where it left off.
+operator's page structure before trusting it, and is never gated: it runs
+for any operator with no need for --enable (that flag exists on `run` only
+- probe accepts it too, purely so re-using the same flags across both
+subcommands doesn't error, but it's a no-op there). `run` is the resumable
+full crawl: safe to Ctrl-C and re-invoke, it picks up where it left off.
 
-Vinci is special-cased (adapter.has_page_data): instead of one HTML page
-per aire, it's discovered+parsed in bulk from Gatsby page-data.json files
-(one per highway) - see adapters/vinci_pagedata.py.
+Vinci and APRR are special-cased (adapter.has_page_data): instead of one
+HTML page per aire, aires are discovered+parsed in bulk from a structured
+source covering many at once - Gatsby page-data.json for Vinci (one file
+per highway, adapters/vinci_pagedata.py), Drupal JSON:API for APRR (one
+paginated collection, adapters/aprr_jsonapi.py). Both `probe` and `run`
+branch on this flag automatically - neither ever falls back to the old
+per-page HTML crawl for these two operators.
 """
 from __future__ import annotations
 
@@ -305,6 +312,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_probe.add_argument("--urls", nargs="*", help="Specific URLs to probe instead of automatic discovery")
     p_probe.add_argument(
         "--save-html", metavar="DIR", help="Save each probed page's raw HTML into DIR for inspection"
+    )
+    p_probe.add_argument(
+        "--enable",
+        action="store_true",
+        help="Accepted for consistency with `run` - probe is read-only and never gated, so this is a no-op here",
     )
     p_probe.set_defaults(func=cmd_probe)
 
